@@ -38,15 +38,13 @@ def cli() -> None:
         state = SolutionState.create(gradient_transformation, encoding, weight_rng)
 
         data_source = create_data_source()
-        train_one_episode = jit(RLInference.train_one_episode)
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
         example_rngs = split(example_rng_base, 5000)
         for i, example_rng in enumerate(example_rngs):
             observation = data_source.initial_state(example_rng)
             print_generic(iteration=i, observation=observation)
-            state = train_one_episode(rl_inference, observation, state.model_weights,
-                                      state.gradient_state, gradient_transformation)
+            state = rl_inference.train_one_episode(observation, state, gradient_transformation)
         print_generic(state)
 
 
@@ -110,17 +108,18 @@ class DistributionInfo:
 class RLInference:
     encoding: RivalEncoding
 
+    @jit
     def train_one_episode(self,
                           observation: RealArray,
-                          model_weights: hk.Params,
-                          gradient_state: GradientState,
+                          state: SolutionState,
                           gradient_transformation: GradientTransformation[Any, hk.Params],
                           ) -> SolutionState:
         observations = jnp.reshape(observation, (1, 1))
-        weights_bar, observation = self._v_infer_gradient_and_value(observations, model_weights)
+        weights_bar, observation = self._v_infer_gradient_and_value(observations,
+                                                                    state.model_weights)
         new_weights_bar, new_gradient_state = gradient_transformation.update(
-            weights_bar, gradient_state, model_weights)
-        new_weights = tree_map(jnp.add, model_weights, new_weights_bar)
+            weights_bar, state.gradient_state, state.model_weights)
+        new_weights = tree_map(jnp.add, state.model_weights, new_weights_bar)
         return SolutionState(new_gradient_state, new_weights)
 
     def _infer(self,
