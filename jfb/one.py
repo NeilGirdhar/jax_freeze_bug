@@ -29,12 +29,11 @@ from tjax.gradient import Adam, GradientState, GradientTransformation
 def cli() -> None:
     with enable_custom_prng():
         solution = create_deduction_solution()
-        batch_size = 1
 
         # TRAIN!
         state = solution.state
         data_source = create_data_source()
-        train_one_episode = jit(RLInference.train_one_episode, static_argnums=(3,))
+        train_one_episode = jit(RLInference.train_one_episode)
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
         example_rngs = split(example_rng_base, 5000)
@@ -42,8 +41,7 @@ def cli() -> None:
             observation = data_source.initial_state(example_rng)
             print_generic(iteration=i, observation=observation)
             training_result = train_one_episode(solution.rl_inference, observation,
-                                                state.model_weights, batch_size,
-                                                state.gradient_state,
+                                                state.model_weights, state.gradient_state,
                                                 solution.gradient_transformation)
             state = SolutionState(training_result.gradient_state, training_result.model_weights)
         print_generic(state)
@@ -62,8 +60,7 @@ class DeductionDataSource:
 
 
 def create_data_source() -> DeductionDataSource:
-    ds_map, info = tfds.load('diamonds', as_supervised=True, with_info=True,
-                                batch_size=1)
+    ds_map, info = tfds.load('diamonds', as_supervised=True, with_info=True, batch_size=1)
     ds = ds_map['train']
     ds_numpy = tfds.as_numpy(ds)
     assert isinstance(info, DatasetInfo)
@@ -171,7 +168,6 @@ class RLInference:
     def train_one_episode(self,
                           observation: RealArray,
                           model_weights: hk.Params,
-                          batch_size: int,
                           gradient_state: GradientState,
                           gradient_transformation: GradientTransformation[Any, hk.Params],
                           ) -> RLTrainingResult:
