@@ -95,10 +95,9 @@ def create_deduction_solution() -> TrainingSolution:
     weight_rng = PRNGKeyArray(threefry_prng_impl,
                               jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
     distribution_cls = MultivariateFixedVarianceNormalNP
-    kwargs = {'variance': jnp.asarray(1.0)}
-    distribution_info = DistributionInfo(1, distribution_cls, kwargs)
+    distribution_info = DistributionInfo(distribution_cls, {'variance': jnp.asarray(1.0)})
 
-    encoding = RivalEncoding(space_features=distribution_info.features,
+    encoding = RivalEncoding(space_features=1,
                              gln_layer_sizes=(3,),
                              distribution_info=distribution_info)
     gradient_transformation = Adam[hk.Params](1e-2)
@@ -160,33 +159,18 @@ class SolutionState:
 
 @dataclass
 class DistributionInfo:
-    """
-    This class knows how to take flattened natural parameters and create a natural parametrization
-    object.
-    """
-    features: int = field(static=True)
     nat_cls: type[NaturalParametrization[Any, Any]] = field(static=True)
     dist_kwargs: dict[str, Any] = field(static=True)
 
     # Methods --------------------------------------------------------------------------------------
-    def expectation_parameter_cls(self) -> type[ExpectationParametrization[Any]]:
-        return self.nat_cls.expectation_parametrization_cls()
-
-    def expectation_parametrization(self, expectation_parameters: RealArray
-                                    ) -> ExpectationParametrization[Any]:
-        exp_cls = self.expectation_parameter_cls()
-        return exp_cls.unflattened(expectation_parameters, **self.dist_kwargs)
-
-    def natural_parametrization(self, flattened_natural_parameters: RealArray
-                                ) -> NaturalParametrization[Any, Any]:
-        return self.nat_cls.unflattened(flattened_natural_parameters, **self.dist_kwargs)
-
     def value_error(self,
                     expectation_observation: RealArray,
                     natural_explanation: RealArray
                     ) -> RealNumeric:
-        expectation_parametrization = self.expectation_parametrization(expectation_observation)
-        natural_parametrization = self.natural_parametrization(natural_explanation)
+        exp_cls = self.nat_cls.expectation_parametrization_cls()
+        expectation_parametrization = exp_cls.unflattened(expectation_observation,
+                                                          **self.dist_kwargs)
+        natural_parametrization = self.nat_cls.unflattened(natural_explanation, **self.dist_kwargs)
         return expectation_parametrization.kl_divergence(natural_parametrization)
 
 
@@ -195,12 +179,6 @@ class _TrainingState:
     observations: RealArray
     gradient_state: GradientState
     model_weights: hk.Params
-
-
-@dataclass
-class _InferOutput:
-    done: BooleanNumeric
-    observation: RealArray
 
 
 @dataclass
@@ -216,7 +194,7 @@ class RLInference:
                           gradient_transformation: GradientTransformation[Any, hk.Params],
                           ) -> RLTrainingResult:
         training_state = _TrainingState(observation, gradient_state, model_weights)
-        weights_bar, infer_outputs = self._v_infer_gradient_and_value(
+        weights_bar, observation = self._v_infer_gradient_and_value(
             training_state.observations, training_state.model_weights)
 
         # Transform the weight gradient using the gradient transformation and update its state.
@@ -225,14 +203,14 @@ class RLInference:
 
         # Update the training state.
         new_weights = tree_map(jnp.add, training_state.model_weights, new_weights_bar)
-        training_state = _TrainingState(infer_outputs.observation, new_gradient_state, new_weights)
+        training_state = _TrainingState(observation, new_gradient_state, new_weights)
         return RLTrainingResult(training_state.gradient_state,
                                 training_state.model_weights)
 
     # Private methods ------------------------------------------------------------------------------
     def _infer(self,
                observation: RealArray,
-               model_weights: hk.Params) -> tuple[RealNumeric, _InferOutput]:
+               model_weights: hk.Params) -> tuple[RealNumeric, RealArray]:
         # Infer action.
         assert isinstance(observation, Array)
         inference_result = infer_encoding_configuration(self.encoding, observation, model_weights)
@@ -240,23 +218,22 @@ class RLInference:
 
         done: BooleanNumeric = True
         # Produce output.
-        infer_output = _InferOutput(done, observation)
-        return new_model_loss, infer_output
+        return new_model_loss, observation
 
     def _infer_gradient_and_value(self,
                                   observation: RealArray,
                                   model_weights: hk.Params) -> (
-                                      tuple[hk.Params, _InferOutput]):
+                                      tuple[hk.Params, RealArray]):
         bound_infer = partial(self._infer, observation)
         f: Callable[[hk.Params],
-                    tuple[hk.Params, _InferOutput]]
+                    tuple[hk.Params, RealArray]]
         f = grad(bound_infer, has_aux=True)
         return f(model_weights)
 
     def _v_infer_gradient_and_value(self,
                                     observations: RealArray,
                                     model_weights: hk.Params) -> (
-                                        tuple[hk.Params, _InferOutput]):
+                                        tuple[hk.Params, RealArray]):
         f = vmap(self._infer_gradient_and_value,
                  in_axes=(0, None),
                  out_axes=(0, 0))
