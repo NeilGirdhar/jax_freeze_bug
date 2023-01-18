@@ -45,10 +45,8 @@ def cli() -> None:
         for i, example_rng in enumerate(example_rngs):
             observation = data_source.initial_state(example_rng)
             print_generic(iteration=i, observation=observation)
-            training_result = train_one_episode(rl_inference, observation,
-                                                state.model_weights, state.gradient_state,
-                                                gradient_transformation)
-            state = SolutionState(training_result.gradient_state, training_result.model_weights)
+            state = train_one_episode(rl_inference, observation, state.model_weights,
+                                      state.gradient_state, gradient_transformation)
         print_generic(state)
 
 
