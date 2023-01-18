@@ -216,8 +216,16 @@ class RLInference:
                           gradient_transformation: GradientTransformation[Any, hk.Params],
                           ) -> RLTrainingResult:
         training_state = _TrainingState(observation, gradient_state, model_weights)
-        body_function = partial(self._training_body_fun, gradient_transformation)
-        training_state = body_function(training_state)
+        weights_bar, infer_outputs = self._v_infer_gradient_and_value(
+            training_state.observations, training_state.model_weights)
+
+        # Transform the weight gradient using the gradient transformation and update its state.
+        new_weights_bar, new_gradient_state = gradient_transformation.update(
+            weights_bar, training_state.gradient_state, training_state.model_weights)
+
+        # Update the training state.
+        new_weights = tree_map(jnp.add, training_state.model_weights, new_weights_bar)
+        training_state = _TrainingState(infer_outputs.observation, new_gradient_state, new_weights)
         return RLTrainingResult(training_state.gradient_state,
                                 training_state.model_weights)
 
@@ -255,20 +263,6 @@ class RLInference:
         weights_bars, infer_outputs = f(observations, model_weights)
         weights_bar = tree_map(partial(jnp.mean, axis=0), weights_bars)
         return weights_bar, infer_outputs
-
-    def _training_body_fun(self,
-                           gradient_transformation: GradientTransformation[Any, hk.Params],
-                           training_state: _TrainingState) -> _TrainingState:
-        weights_bar, infer_outputs = self._v_infer_gradient_and_value(
-            training_state.observations, training_state.model_weights)
-
-        # Transform the weight gradient using the gradient transformation and update its state.
-        new_weights_bar, new_gradient_state = gradient_transformation.update(
-            weights_bar, training_state.gradient_state, training_state.model_weights)
-
-        # Update the training state.
-        new_weights = tree_map(jnp.add, training_state.model_weights, new_weights_bar)
-        return _TrainingState(infer_outputs.observation, new_gradient_state, new_weights)
 
 
 def odd_power(base: RealArray, exponent: RealNumeric) -> RealArray:
