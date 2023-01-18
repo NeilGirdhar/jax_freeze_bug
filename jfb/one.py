@@ -411,35 +411,18 @@ class RivalEncoding:
         return energy_a + energy_b, energy_dot_a + energy_dot_b
 
 
-# Exported classes ---------------------------------------------------------------------------------
-@dataclass
-class InternalEncodingInferenceResult:
-    """
-    InternalEncodingInferenceResult is the output of internal_infer_encoding, and is used in its
-    custom VJP rule.  This means that InternalEncodingInferenceResult stores primals from the
-    forward pass and cotangents for the backward pass.
-    """
-    inference_result: EncodingInferenceResult
-
-    @classmethod
-    def cotangent(cls: type[U], encoding: RivalEncoding) -> U:
-        return cls(EncodingInferenceResult.cotangent(encoding))
-
-
 # Un-exported functions ----------------------------------------------------------------------------
 def internal_infer_encoding(encoding: RivalEncoding,
                             observation: RealArray,
-                            weights: hk.Params) -> InternalEncodingInferenceResult:
+                            weights: hk.Params) -> EncodingInferenceResult:
     encoding = stop_gradient(encoding)
     observation = stop_gradient(observation)
     seeker_loss = seeker_inference(encoding, observation, weights)
-    geometry_result = GeometryResult(seeker_loss)
-    inference_result = EncodingInferenceResult(observation, 0.0, geometry_result)
-    return InternalEncodingInferenceResult(inference_result)
+    return EncodingInferenceResult(observation, 0.0, seeker_loss)
 
 
 # Un-exported types --------------------------------------------------------------------------------
-U = TypeVar('U', bound='InternalEncodingInferenceResult')
+U = TypeVar('U', bound='EncodingInferenceResult')
 
 
 # Exported classes ---------------------------------------------------------------------------------
@@ -492,27 +475,22 @@ EIRT = TypeVar('EIRT', bound='EncodingInferenceResult')
 
 
 @dataclass
-class GeometryResult:
-    seeker_loss: SeekerLoss
-
-
-@dataclass
 class EncodingInferenceResult:
     observation: RealArray
     dummy_loss: RealNumeric
-    geometry: GeometryResult
+    seeker_loss: SeekerLoss
 
     @classmethod
     def zeros(cls: type[EIRT], encoding: RivalEncoding) -> EIRT:
         observation = jnp.zeros(encoding.space_features)
-        geometry = GeometryResult(SeekerLoss.zeros())
-        return cls(observation, 0.0, geometry)
+        seeker_loss = SeekerLoss.zeros()
+        return cls(observation, 0.0, seeker_loss)
 
     @classmethod
     def cotangent(cls: type[EIRT], encoding: RivalEncoding) -> EIRT:
         observation = jnp.zeros(encoding.space_features)
-        geometry = GeometryResult(SeekerLoss.cotangent())
-        return cls(observation, 1.0, geometry)
+        seeker_loss = SeekerLoss.cotangent()
+        return cls(observation, 1.0, seeker_loss)
 
 
 @custom_vjp
@@ -528,8 +506,7 @@ def infer_encoding_configuration(encoding: RivalEncoding,
     Returns:
         inference_result: The encoding's inference result.
     """
-    internal_result = internal_infer_encoding(encoding, observation, weights)
-    return internal_result.inference_result
+    return internal_infer_encoding(encoding, observation, weights)
 
 
 def infer_encoding_configuration_fwd(encoding: RivalEncoding,
@@ -538,11 +515,8 @@ def infer_encoding_configuration_fwd(encoding: RivalEncoding,
                                          tuple[EncodingInferenceResult, _EncodingResiduals]):
 
     # Run inference VJP.
-    internal_result, weight_vjp = vjp(partial(internal_infer_encoding, encoding, observation),
+    inference_result, weight_vjp = vjp(partial(internal_infer_encoding, encoding, observation),
                                       weights)
-
-    # Return values.
-    inference_result = internal_result.inference_result
     residuals = _EncodingResiduals(weight_vjp, encoding)
     return inference_result, residuals
 
@@ -555,13 +529,13 @@ def infer_encoding_configuration_bwd(residuals: _EncodingResiduals,
     """
     # This produces a zeroed out internal result cotangent.  The weights within an encoding node do
     # not depend on any cotangents to that node, but the cotangent is needed to run the VJP.
-    internal_result_bar = InternalEncodingInferenceResult.cotangent(residuals.encoding)
+    internal_result_bar = EncodingInferenceResult.cotangent(residuals.encoding)
     weights_bar, = residuals.weight_vjp(internal_result_bar)
     return None, None, weights_bar
 
 
 # Private types ------------------------------------------------------------------------------------
-_Weight_VJP = Callable[[InternalEncodingInferenceResult], tuple[hk.Params]]
+_Weight_VJP = Callable[[EncodingInferenceResult], tuple[hk.Params]]
 
 
 @dataclass
