@@ -77,37 +77,6 @@ def create_data_source() -> DeductionDataSource:
     return DeductionDataSource(info, dataset)
 
 
-@dataclass
-class RLTrainingResult:
-    gradient_state: GradientState
-    model_weights: hk.Params
-
-
-TST = TypeVar('TST', bound='TrainingSolution')
-
-
-@dataclass
-class TrainingSolution:
-    """
-    The TrainingSolution is everything needed to keep track of the solution during training:
-        rl_inference: The model and the problem.
-        gradient_transformation: The way in which the state is updated.
-        state: The state of weights, the gradient transformation, and the RNG.
-    """
-    rl_inference: RLInference
-    gradient_transformation: SolutionGT
-    state: SolutionState
-
-    @classmethod
-    def create(cls: type[TST],
-               encoding: RivalEncoding,
-               gradient_transformation: SolutionGT,
-               weight_rng: KeyArray) -> TST:
-        rl_inference = RLInference(encoding)
-        solution_state = SolutionState.create(gradient_transformation, encoding, weight_rng)
-        return cls(rl_inference, gradient_transformation, solution_state)
-
-
 SolutionGT = GradientTransformation[Any, hk.Params]
 SST = TypeVar('SST', bound='SolutionState')
 
@@ -162,20 +131,13 @@ class RLInference:
                           model_weights: hk.Params,
                           gradient_state: GradientState,
                           gradient_transformation: GradientTransformation[Any, hk.Params],
-                          ) -> RLTrainingResult:
-        training_state = _TrainingState(jnp.reshape(observation, (1, 1)), gradient_state, model_weights)
-        weights_bar, observation = self._v_infer_gradient_and_value(
-            training_state.observations, training_state.model_weights)
-
-        # Transform the weight gradient using the gradient transformation and update its state.
+                          ) -> SolutionState:
+        observations = jnp.reshape(observation, (1, 1))
+        weights_bar, observation = self._v_infer_gradient_and_value(observations, model_weights)
         new_weights_bar, new_gradient_state = gradient_transformation.update(
-            weights_bar, training_state.gradient_state, training_state.model_weights)
-
-        # Update the training state.
-        new_weights = tree_map(jnp.add, training_state.model_weights, new_weights_bar)
-        training_state = _TrainingState(observation, new_gradient_state, new_weights)
-        return RLTrainingResult(training_state.gradient_state,
-                                training_state.model_weights)
+            weights_bar, gradient_state, model_weights)
+        new_weights = tree_map(jnp.add, model_weights, new_weights_bar)
+        return SolutionState(new_gradient_state, new_weights)
 
     # Private methods ------------------------------------------------------------------------------
     def _infer(self,
