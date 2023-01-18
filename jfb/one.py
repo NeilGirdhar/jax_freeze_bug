@@ -11,7 +11,7 @@ import haiku as hk
 import jax.numpy as jnp
 import numpy as np
 import tensorflow_datasets as tfds
-from efax import MultivariateFixedVarianceNormalNP, NaturalParametrization
+from efax import MultivariateUnitNormalNP, NaturalParametrization
 from jax import enable_custom_prng, grad, jit, jvp, vjp, vmap
 from jax._src.prng import PRNGKeyArray, threefry_prng_impl
 from jax.lax import dot, stop_gradient
@@ -30,8 +30,8 @@ def cli() -> None:
     with enable_custom_prng():
         weight_rng = PRNGKeyArray(threefry_prng_impl,
                                 jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
-        distribution_cls = MultivariateFixedVarianceNormalNP
-        distribution_info = DistributionInfo(distribution_cls, {'variance': jnp.asarray(1.0)})
+        distribution_cls = MultivariateUnitNormalNP
+        distribution_info = DistributionInfo(distribution_cls)
         encoding = RivalEncoding(space_features=1,
                                 gln_layer_sizes=(3,),
                                 distribution_info=distribution_info)
@@ -134,7 +134,6 @@ class SolutionState:
 @dataclass
 class DistributionInfo:
     nat_cls: type[NaturalParametrization[Any, Any]] = field(static=True)
-    dist_kwargs: dict[str, Any] = field(static=True)
 
     # Methods --------------------------------------------------------------------------------------
     def value_error(self,
@@ -142,9 +141,8 @@ class DistributionInfo:
                     natural_explanation: RealArray
                     ) -> RealNumeric:
         exp_cls = self.nat_cls.expectation_parametrization_cls()
-        expectation_parametrization = exp_cls.unflattened(expectation_observation,
-                                                          **self.dist_kwargs)
-        natural_parametrization = self.nat_cls.unflattened(natural_explanation, **self.dist_kwargs)
+        expectation_parametrization = exp_cls.unflattened(expectation_observation)
+        natural_parametrization = self.nat_cls.unflattened(natural_explanation)
         return expectation_parametrization.kl_divergence(natural_parametrization)
 
 
