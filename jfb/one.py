@@ -191,15 +191,8 @@ class DistributionInfo:
 
 
 @dataclass
-class _InferenceState:
-    step: IntegralNumeric
-    done: BooleanNumeric
-    observations: RealArray
-
-
-@dataclass
 class _TrainingState:
-    inference_state: _InferenceState
+    observations: RealArray
     gradient_state: GradientState
     model_weights: hk.Params
 
@@ -212,12 +205,6 @@ class _InferOutput:
 
 @dataclass
 class RLInference:
-    """
-    This class iterates the parameters of the model.  Each step of the iteration corresponds to
-    a single step of a reinforcement learning trajectory.
-
-    An RLInference object is stored by SolutionTrainer, which is an instance IteratedFunction.
-    """
     encoding: RivalEncoding
 
     # New methods ----------------------------------------------------------------------------------
@@ -228,32 +215,13 @@ class RLInference:
                           gradient_state: GradientState,
                           gradient_transformation: GradientTransformation[Any, hk.Params],
                           ) -> RLTrainingResult:
-        """
-        Start batch_size parallel agents and run them for one episode.  The agents all share
-        parameters, which trained after every time step.
-        """
-        inference_state = self._set_up_inference(observation, batch_size)
-        training_state = _TrainingState(inference_state, gradient_state, model_weights)
-        condition_function = partial(self._training_cond_fun, 1)
+        training_state = _TrainingState(observation, gradient_state, model_weights)
         body_function = partial(self._training_body_fun, gradient_transformation)
-        training_state = while_loop(condition_function, body_function, training_state)
+        training_state = body_function(training_state)
         return RLTrainingResult(training_state.gradient_state,
                                 training_state.model_weights)
 
     # Private methods ------------------------------------------------------------------------------
-    def _set_up_inference(self,
-                          observation: RealArray,
-                          batch_size: int) -> _InferenceState:
-        observations = observation
-        return _InferenceState(0, False, observations)
-
-    def _update_inference_state(self,
-                                inference_state: _InferenceState,
-                                infer_outputs: _InferOutput) -> _InferenceState:
-        new_step = inference_state.step + 1
-        new_done = jnp.all(infer_outputs.done)
-        return _InferenceState(new_step, new_done, infer_outputs.observation)
-
     def _infer(self,
                observation: RealArray,
                model_weights: hk.Params) -> tuple[RealNumeric, _InferOutput]:
@@ -288,28 +256,19 @@ class RLInference:
         weights_bar = tree_map(partial(jnp.mean, axis=0), weights_bars)
         return weights_bar, infer_outputs
 
-    def _training_cond_fun(self,
-                           max_episode_steps: int,
-                           training_state: _TrainingState) -> BooleanNumeric:
-        return jnp.logical_and(training_state.inference_state.step < max_episode_steps,
-                               jnp.logical_not(training_state.inference_state.done))
-
     def _training_body_fun(self,
                            gradient_transformation: GradientTransformation[Any, hk.Params],
                            training_state: _TrainingState) -> _TrainingState:
-        inference_state = training_state.inference_state
-        # Infer weight gradient.
         weights_bar, infer_outputs = self._v_infer_gradient_and_value(
-            inference_state.observations, training_state.model_weights)
+            training_state.observations, training_state.model_weights)
 
         # Transform the weight gradient using the gradient transformation and update its state.
         new_weights_bar, new_gradient_state = gradient_transformation.update(
             weights_bar, training_state.gradient_state, training_state.model_weights)
 
         # Update the training state.
-        new_inference_state = self._update_inference_state(inference_state, infer_outputs)
         new_weights = tree_map(jnp.add, training_state.model_weights, new_weights_bar)
-        return _TrainingState(new_inference_state, new_gradient_state, new_weights)
+        return _TrainingState(infer_outputs.observation, new_gradient_state, new_weights)
 
 
 def odd_power(base: RealArray, exponent: RealNumeric) -> RealArray:
