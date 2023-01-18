@@ -566,10 +566,7 @@ class NoisyMLP(hk.Module):
 
 
 class Dense(hk.Module):
-    def __init__(self,
-                 output_features: int,
-                 *,
-                 name: None | str = None):
+    def __init__(self, output_features: int, *, name: None | str = None):
         super().__init__(name=name)
         self.output_features = output_features
 
