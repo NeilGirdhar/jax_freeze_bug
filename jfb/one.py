@@ -194,13 +194,8 @@ class RLInference:
     def _infer(self,
                observation: RealArray,
                model_weights: hk.Params) -> tuple[RealNumeric, RealArray]:
-        # Infer action.
-        assert isinstance(observation, Array)
         inference_result = infer_encoding_configuration(self.encoding, observation, model_weights)
         new_model_loss = inference_result.dummy_loss
-
-        done: BooleanNumeric = True
-        # Produce output.
         return new_model_loss, observation
 
     def _infer_gradient_and_value(self,
