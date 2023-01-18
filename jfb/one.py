@@ -309,27 +309,6 @@ def internal_infer_encoding(encoding: RivalEncoding,
                             weights: hk.Params) -> EncodingInferenceResult:
     encoding = stop_gradient(encoding)
     observation = stop_gradient(observation)
-    seeker_loss = seeker_inference(encoding, observation, weights)
-    return EncodingInferenceResult(observation, 0.0, seeker_loss)
-
-
-@dataclass
-class SeekerLoss:
-    centering_loss: RealNumeric
-
-    @classmethod
-    def zeros(cls) -> SeekerLoss:
-        return SeekerLoss(0.0)
-
-    @classmethod
-    def cotangent(cls) -> SeekerLoss:
-        return SeekerLoss(1.0)
-
-
-def seeker_inference(encoding: RivalEncoding,
-                     observation: RealArray,
-                     weights: hk.Params
-                     ) -> SeekerLoss:
     inferred_message = jnp.zeros(encoding.space_features)
     # Stop gradient at the initial inferred message because we don't want to train the variational
     # inference here.
@@ -353,7 +332,21 @@ def seeker_inference(encoding: RivalEncoding,
     centering_loss = jnp.sum(jnp.square(inferred_message))
 
     # Calculate seeker loss.
-    return SeekerLoss(centering_loss * 1e-1)
+    seeker_loss = SeekerLoss(centering_loss * 1e-1)
+    return EncodingInferenceResult(observation, 0.0, seeker_loss)
+
+
+@dataclass
+class SeekerLoss:
+    centering_loss: RealNumeric
+
+    @classmethod
+    def zeros(cls) -> SeekerLoss:
+        return SeekerLoss(0.0)
+
+    @classmethod
+    def cotangent(cls) -> SeekerLoss:
+        return SeekerLoss(1.0)
 
 
 EIRT = TypeVar('EIRT', bound='EncodingInferenceResult')
