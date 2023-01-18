@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import tensorflow_datasets as tfds
 from efax import MultivariateUnitNormalNP, NaturalParametrization
-from jax import enable_custom_prng, grad, jit, jvp, vjp, vmap
+from jax import enable_custom_prng, grad, jit, vjp, vmap
 from jax._src.prng import PRNGKeyArray, threefry_prng_impl
 from jax.lax import dot, stop_gradient
 from jax.nn import softplus
@@ -21,7 +21,7 @@ from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from more_itertools import mark_ends
 from tensorflow_datasets.core import DatasetInfo
-from tjax import RealArray, RealNumeric, custom_jvp, custom_vjp, print_generic
+from tjax import RealArray, RealNumeric, custom_vjp, print_generic
 from tjax.dataclasses import dataclass, field
 from tjax.gradient import Adam, GradientState, GradientTransformation
 
@@ -195,35 +195,6 @@ class RivalEncoding:
                             weights: hk.Params) -> RealNumeric:
         intermediate_explanation = self.intermediate_explanation(natural_explanation, weights)
         return self.distribution_info.value_error(observation, intermediate_explanation)
-
-    # TODO: When mypy supports ParamSpec, use a decorator.
-    _explanation_energy = custom_jvp(_explanation_energy,  # type: ignore[assignment]
-                                     nondiff_argnums=(0,))
-
-    @_explanation_energy.defjvp  # type: ignore[no-redef, attr-defined, misc]
-    def _(self,
-          primals: tuple[RealArray, RealArray, hk.Params],
-          tangents: tuple[RealArray, RealArray, hk.Params]
-          ) -> tuple[RealNumeric, RealNumeric]:
-        natural_explanation, observation, weights = primals
-        natural_explanation_dot, observation_dot, weights_dot = tangents
-
-        # Block natural_explanation_dot cotangent since it is produced below.
-        intermediate_explanation, intermediate_explanation_dot = jvp(
-            self.intermediate_explanation,
-            (natural_explanation, weights),
-            (tree_map(jnp.zeros_like, natural_explanation_dot), weights_dot))
-
-        # The intermediate_explanation_dot cotangent is propagated to weights_dot.
-        energy_a, energy_dot_a = jvp(self.distribution_info.value_error,
-                                     (observation, intermediate_explanation),
-                                     (jnp.zeros_like(observation_dot),
-                                      intermediate_explanation_dot))
-        # Substitute natural_explanation_dot for intermediate_explanation_dot.
-        energy_b, energy_dot_b = jvp(self.distribution_info.value_error,
-                                     (observation, intermediate_explanation),
-                                     (observation_dot, natural_explanation_dot))
-        return energy_a + energy_b, energy_dot_a + energy_dot_b
 
 
 def internal_infer_encoding(encoding: RivalEncoding,
