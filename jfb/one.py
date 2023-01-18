@@ -137,8 +137,7 @@ class RLInference:
                                   model_weights: hk.Params) -> (
                                       tuple[hk.Params, RealArray]):
         bound_infer = partial(self._infer, observation)
-        f: Callable[[hk.Params],
-                    tuple[hk.Params, RealArray]]
+        f: Callable[[hk.Params], tuple[hk.Params, RealArray]]
         f = grad(bound_infer, has_aux=True)
         return f(model_weights)
 
@@ -146,9 +145,7 @@ class RLInference:
                                     observations: RealArray,
                                     model_weights: hk.Params) -> (
                                         tuple[hk.Params, RealArray]):
-        f = vmap(self._infer_gradient_and_value,
-                 in_axes=(0, None),
-                 out_axes=(0, 0))
+        f = vmap(self._infer_gradient_and_value, in_axes=(0, None), out_axes=(0, 0))
         weights_bars, infer_outputs = f(observations, model_weights)
         weights_bar = tree_map(partial(jnp.mean, axis=0), weights_bars)
         return weights_bar, infer_outputs
