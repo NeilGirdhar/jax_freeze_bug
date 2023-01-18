@@ -39,11 +39,10 @@ def cli() -> None:
         state = solution.state
         data_source = create_data_source()
         train_one_episode = jit(RLInference.train_one_episode, static_argnums=(3,))
-        i = 0
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
         example_rngs = split(example_rng_base, examples)
-        for example_rng in example_rngs:
+        for i, example_rng in enumerate(example_rngs):
             observation = data_source.initial_state(example_rng)
             print_generic(iteration=i, observation=observation)
             training_result = train_one_episode(solution.rl_inference, observation,
@@ -51,7 +50,6 @@ def cli() -> None:
                                                 state.gradient_state,
                                                 solution.gradient_transformation)
             state = SolutionState(training_result.gradient_state, training_result.model_weights)
-            i += 1
         print_generic(state)
 
 
