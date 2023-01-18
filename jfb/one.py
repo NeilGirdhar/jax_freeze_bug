@@ -382,15 +382,6 @@ class EncodingInferenceResult:
 def infer_encoding_configuration(encoding: RivalEncoding,
                                  observation: RealArray,
                                  weights: hk.Params) -> EncodingInferenceResult:
-    """
-    Args:
-        encoding: The encoding whose trajectory is inferred.
-        observation: The observation at the encoding.
-        rng: The random number generator.
-        weights: The weights of the encoding.
-    Returns:
-        inference_result: The encoding's inference result.
-    """
     return internal_infer_encoding(encoding, observation, weights)
 
 
@@ -399,7 +390,6 @@ def infer_encoding_configuration_fwd(encoding: RivalEncoding,
                                      weights: hk.Params) -> (
                                          tuple[EncodingInferenceResult, _EncodingResiduals]):
 
-    # Run inference VJP.
     inference_result, weight_vjp = vjp(partial(internal_infer_encoding, encoding, observation),
                                       weights)
     residuals = _EncodingResiduals(weight_vjp, encoding)
@@ -409,11 +399,6 @@ def infer_encoding_configuration_fwd(encoding: RivalEncoding,
 def infer_encoding_configuration_bwd(residuals: _EncodingResiduals,
                                      inference_result_bar: EncodingInferenceResult) -> (
                                          tuple[None, None, hk.Params]):
-    """
-    Create weight cotangents using the weight VJP.
-    """
-    # This produces a zeroed out internal result cotangent.  The weights within an encoding node do
-    # not depend on any cotangents to that node, but the cotangent is needed to run the VJP.
     internal_result_bar = EncodingInferenceResult.cotangent(residuals.encoding)
     weights_bar, = residuals.weight_vjp(internal_result_bar)
     return None, None, weights_bar
