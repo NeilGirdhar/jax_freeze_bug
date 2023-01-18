@@ -29,12 +29,12 @@ from tjax.gradient import Adam, GradientState, GradientTransformation
 def cli() -> None:
     with enable_custom_prng():
         weight_rng = PRNGKeyArray(threefry_prng_impl,
-                                jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
+                                  jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
         distribution_cls = MultivariateUnitNormalNP
         distribution_info = DistributionInfo(distribution_cls)
         encoding = RivalEncoding(space_features=1,
-                                gln_layer_sizes=(3,),
-                                distribution_info=distribution_info)
+                                 gln_layer_sizes=(3,),
+                                 distribution_info=distribution_info)
         gradient_transformation = Adam[hk.Params](1e-2)
         rl_inference = RLInference(encoding)
         state = SolutionState.create(gradient_transformation, encoding, weight_rng)
@@ -114,7 +114,6 @@ class DistributionInfo:
 class RLInference:
     encoding: RivalEncoding
 
-    # New methods ----------------------------------------------------------------------------------
     def train_one_episode(self,
                           observation: RealArray,
                           model_weights: hk.Params,
@@ -128,7 +127,6 @@ class RLInference:
         new_weights = tree_map(jnp.add, model_weights, new_weights_bar)
         return SolutionState(new_gradient_state, new_weights)
 
-    # Private methods ------------------------------------------------------------------------------
     def _infer(self,
                observation: RealArray,
                model_weights: hk.Params) -> tuple[RealNumeric, RealArray]:
@@ -169,7 +167,6 @@ class RivalEncoding:
     gln_layer_sizes: tuple[int, ...] = field(static=True)
     distribution_info: DistributionInfo
 
-    # New methods ----------------------------------------------------------------------------------
     def create_weights(self, rng: KeyArray) -> hk.Params:
         transformed = hk.transform(self.haiku_weight_initializer)
         return transformed.init(rng)
@@ -184,38 +181,23 @@ class RivalEncoding:
     def intermediate_explanation(self,
                                  natural_explanation: RealArray,
                                  weights: hk.Params) -> RealArray:
-        """
-        Args:
-            natural_explanation: The natural parameters of the explanation.
-            weights: The model weights.
-            rng: The random number generator to generate any noises.
-        Returns: The expectation parameters of the explanation.
-        """
         assert natural_explanation.shape == (self.space_features,)
         intermediate_explanation_f = hk.transform(self._intermediate_explanation).apply
         return intermediate_explanation_f(weights, None, natural_explanation)
 
-    # Augmented Haiku methods ----------------------------------------------------------------------
     def haiku_weight_initializer(self) -> None:
         natural_explanation = jnp.zeros(self.space_features)
         self._intermediate_explanation(natural_explanation)
 
-    # Private Haiku methods ------------------------------------------------------------------------
     def _gln_module(self) -> NoisyMLP:
         return NoisyMLP(self.gln_layer_sizes, self.space_features, activation=softplus, name='gln')
 
     def _intermediate_explanation(self, natural_explanation: RealArray) -> RealArray:
-        """
-        Args:
-            natural_explanation: The natural parameters of the explanation.
-        Returns: The intermediate parameters of the explanation.
-        """
         gln_mlp = self._gln_module()
         value = gln_mlp(natural_explanation)
         value += 1e-6 * odd_power(natural_explanation, 3.0)
         return value
 
-    # Private methods ------------------------------------------------------------------------------
     def _explanation_energy(self,
                             natural_explanation: RealArray,
                             observation: RealArray,
@@ -253,7 +235,6 @@ class RivalEncoding:
         return energy_a + energy_b, energy_dot_a + energy_dot_b
 
 
-# Un-exported functions ----------------------------------------------------------------------------
 def internal_infer_encoding(encoding: RivalEncoding,
                             observation: RealArray,
                             weights: hk.Params) -> EncodingInferenceResult:
@@ -324,7 +305,7 @@ def infer_encoding_configuration_fwd(encoding: RivalEncoding,
                                          tuple[EncodingInferenceResult, _EncodingResiduals]):
 
     inference_result, weight_vjp = vjp(partial(internal_infer_encoding, encoding, observation),
-                                      weights)
+                                       weights)
     residuals = _EncodingResiduals(weight_vjp, encoding)
     return inference_result, residuals
 
@@ -351,9 +332,6 @@ infer_encoding_configuration.defvjp(infer_encoding_configuration_fwd,
 
 
 class NoisyMLP(hk.Module):
-    """
-    The noisy MLP is an MLP with optional Gaussian noise added to the signals.
-    """
     def __init__(self,
                  layer_sizes: tuple[int, ...],
                  output_features: int,
@@ -385,7 +363,6 @@ class Dense(hk.Module):
         self.output_features = output_features
 
     def __call__(self, inputs: RealArray) -> RealArray:
-        shape = inputs.shape
         input_features = inputs.shape[-1]
         dtype = inputs.dtype
         stddev = 0. if input_features == 0 else 1. / np.sqrt(input_features)
