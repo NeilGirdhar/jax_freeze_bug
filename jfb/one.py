@@ -29,7 +29,6 @@ from tjax.gradient import Adam, GradientState, GradientTransformation
 def cli() -> None:
     with enable_custom_prng():
         solution = create_deduction_solution()
-        examples = 5000
         batch_size = 1
 
         # TRAIN!
@@ -38,7 +37,7 @@ def cli() -> None:
         train_one_episode = jit(RLInference.train_one_episode, static_argnums=(3,))
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
-        example_rngs = split(example_rng_base, examples)
+        example_rngs = split(example_rng_base, 5000)
         for i, example_rng in enumerate(example_rngs):
             observation = data_source.initial_state(example_rng)
             print_generic(iteration=i, observation=observation)
