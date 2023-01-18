@@ -28,10 +28,18 @@ from tjax.gradient import Adam, GradientState, GradientTransformation
 
 def cli() -> None:
     with enable_custom_prng():
-        solution = create_deduction_solution()
+        weight_rng = PRNGKeyArray(threefry_prng_impl,
+                                jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
+        distribution_cls = MultivariateFixedVarianceNormalNP
+        distribution_info = DistributionInfo(distribution_cls, {'variance': jnp.asarray(1.0)})
+        encoding = RivalEncoding(space_features=1,
+                                gln_layer_sizes=(3,),
+                                distribution_info=distribution_info)
+        gradient_transformation = Adam[hk.Params](1e-2)
+        solution = TrainingSolution.create(encoding, gradient_transformation, weight_rng)
+        rl_inference = RLInference(encoding)
+        state = SolutionState.create(gradient_transformation, encoding, weight_rng)
 
-        # TRAIN!
-        state = solution.state
         data_source = create_data_source()
         train_one_episode = jit(RLInference.train_one_episode)
         rng = PRNGKey(5)
@@ -68,19 +76,6 @@ def create_data_source() -> DeductionDataSource:
     dataset = list(ds_numpy)
     print(f"Loaded dataset of size {len(dataset)}")
     return DeductionDataSource(info, dataset)
-
-
-def create_deduction_solution() -> TrainingSolution:
-    weight_rng = PRNGKeyArray(threefry_prng_impl,
-                              jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
-    distribution_cls = MultivariateFixedVarianceNormalNP
-    distribution_info = DistributionInfo(distribution_cls, {'variance': jnp.asarray(1.0)})
-
-    encoding = RivalEncoding(space_features=1,
-                             gln_layer_sizes=(3,),
-                             distribution_info=distribution_info)
-    gradient_transformation = Adam[hk.Params](1e-2)
-    return TrainingSolution.create(encoding, gradient_transformation, weight_rng)
 
 
 @dataclass
