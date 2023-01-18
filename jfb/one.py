@@ -83,9 +83,6 @@ SST = TypeVar('SST', bound='SolutionState')
 
 @dataclass
 class SolutionState:
-    """
-    The SolutionState is iterated by the SolutionTrainer during training.
-    """
     gradient_state: GradientState
     model_weights: hk.Params
 
@@ -103,7 +100,6 @@ class SolutionState:
 class DistributionInfo:
     nat_cls: type[NaturalParametrization[Any, Any]] = field(static=True)
 
-    # Methods --------------------------------------------------------------------------------------
     def value_error(self,
                     expectation_observation: RealArray,
                     natural_explanation: RealArray
