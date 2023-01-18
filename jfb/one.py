@@ -115,13 +115,6 @@ class DistributionInfo:
 
 
 @dataclass
-class _TrainingState:
-    observations: RealArray
-    gradient_state: GradientState
-    model_weights: hk.Params
-
-
-@dataclass
 class RLInference:
     encoding: RivalEncoding
 
@@ -302,10 +295,6 @@ class SeekerLoss:
     centering_loss: RealNumeric
 
     @classmethod
-    def zeros(cls) -> SeekerLoss:
-        return SeekerLoss(0.0)
-
-    @classmethod
     def cotangent(cls) -> SeekerLoss:
         return SeekerLoss(1.0)
 
@@ -318,12 +307,6 @@ class EncodingInferenceResult:
     observation: RealArray
     dummy_loss: RealNumeric
     seeker_loss: SeekerLoss
-
-    @classmethod
-    def zeros(cls: type[EIRT], encoding: RivalEncoding) -> EIRT:
-        observation = jnp.zeros(encoding.space_features)
-        seeker_loss = SeekerLoss.zeros()
-        return cls(observation, 0.0, seeker_loss)
 
     @classmethod
     def cotangent(cls: type[EIRT], encoding: RivalEncoding) -> EIRT:
