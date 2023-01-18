@@ -32,9 +32,7 @@ def cli() -> None:
                                   jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
         distribution_cls = MultivariateUnitNormalNP
         distribution_info = DistributionInfo(distribution_cls)
-        encoding = RivalEncoding(space_features=1,
-                                 gln_layer_sizes=(3,),
-                                 distribution_info=distribution_info)
+        encoding = RivalEncoding(distribution_info=distribution_info)
         gradient_transformation = Adam[hk.Params](1e-2)
         rl_inference = RLInference(encoding)
         state = SolutionState.create(gradient_transformation, encoding, weight_rng)
@@ -163,8 +161,6 @@ def odd_power(base: RealArray, exponent: RealNumeric) -> RealArray:
 @dataclass
 class RivalEncoding:
     _: KW_ONLY
-    space_features: int = field(static=True)
-    gln_layer_sizes: tuple[int, ...] = field(static=True)
     distribution_info: DistributionInfo
 
     def create_weights(self, rng: KeyArray) -> hk.Params:
@@ -175,25 +171,20 @@ class RivalEncoding:
                               natural_explanation: RealArray,
                               observation: RealArray,
                               weights: hk.Params) -> RealNumeric:
-        assert natural_explanation.shape == (self.space_features,)
         return self._explanation_energy(natural_explanation, observation, weights)
 
     def intermediate_explanation(self,
                                  natural_explanation: RealArray,
                                  weights: hk.Params) -> RealArray:
-        assert natural_explanation.shape == (self.space_features,)
         intermediate_explanation_f = hk.transform(self._intermediate_explanation).apply
         return intermediate_explanation_f(weights, None, natural_explanation)
 
     def haiku_weight_initializer(self) -> None:
-        natural_explanation = jnp.zeros(self.space_features)
+        natural_explanation = jnp.zeros(1)
         self._intermediate_explanation(natural_explanation)
 
-    def _gln_module(self) -> NoisyMLP:
-        return NoisyMLP(self.gln_layer_sizes, self.space_features, activation=softplus, name='gln')
-
     def _intermediate_explanation(self, natural_explanation: RealArray) -> RealArray:
-        gln_mlp = self._gln_module()
+        gln_mlp = NoisyMLP((3,), 1, activation=softplus, name='gln')
         value = gln_mlp(natural_explanation)
         value += 1e-6 * odd_power(natural_explanation, 3.0)
         return value
@@ -240,7 +231,7 @@ def internal_infer_encoding(encoding: RivalEncoding,
                             weights: hk.Params) -> EncodingInferenceResult:
     encoding = stop_gradient(encoding)
     observation = stop_gradient(observation)
-    inferred_message = jnp.zeros(encoding.space_features)
+    inferred_message = jnp.zeros(1)
     # Stop gradient at the initial inferred message because we don't want to train the variational
     # inference here.
     inferred_message = stop_gradient(inferred_message)
@@ -287,7 +278,7 @@ class EncodingInferenceResult:
 
     @classmethod
     def cotangent(cls: type[EIRT], encoding: RivalEncoding) -> EIRT:
-        observation = jnp.zeros(encoding.space_features)
+        observation = jnp.zeros(1)
         seeker_loss = SeekerLoss.cotangent()
         return cls(observation, 1.0, seeker_loss)
 
