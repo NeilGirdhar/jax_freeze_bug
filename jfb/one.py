@@ -339,9 +339,7 @@ class RivalEncoding:
 
     def intermediate_explanation(self,
                                  natural_explanation: RealArray,
-                                 weights: hk.Params,
-                                 *,
-                                 rng: None | KeyArray = None) -> RealArray:
+                                 weights: hk.Params) -> RealArray:
         """
         Args:
             natural_explanation: The natural parameters of the explanation.
@@ -351,7 +349,7 @@ class RivalEncoding:
         """
         assert natural_explanation.shape == (self.space_features,)
         intermediate_explanation_f = hk.transform(self._intermediate_explanation).apply
-        return intermediate_explanation_f(weights, rng, natural_explanation)
+        return intermediate_explanation_f(weights, None, natural_explanation)
 
     # Augmented Haiku methods ----------------------------------------------------------------------
     def haiku_weight_initializer(self) -> None:
@@ -421,11 +419,6 @@ def internal_infer_encoding(encoding: RivalEncoding,
     return EncodingInferenceResult(observation, 0.0, seeker_loss)
 
 
-# Un-exported types --------------------------------------------------------------------------------
-U = TypeVar('U', bound='EncodingInferenceResult')
-
-
-# Exported classes ---------------------------------------------------------------------------------
 @dataclass
 class SeekerLoss:
     centering_loss: RealNumeric
@@ -439,7 +432,6 @@ class SeekerLoss:
         return SeekerLoss(1.0)
 
 
-# Un-exported functions ----------------------------------------------------------------------------
 def seeker_inference(encoding: RivalEncoding,
                      observation: RealArray,
                      weights: hk.Params
@@ -467,8 +459,7 @@ def seeker_inference(encoding: RivalEncoding,
     centering_loss = jnp.sum(jnp.square(inferred_message))
 
     # Calculate seeker loss.
-    seeker_loss = SeekerLoss(centering_loss * 1e-1)
-    return seeker_loss
+    return SeekerLoss(centering_loss * 1e-1)
 
 
 EIRT = TypeVar('EIRT', bound='EncodingInferenceResult')
@@ -534,7 +525,6 @@ def infer_encoding_configuration_bwd(residuals: _EncodingResiduals,
     return None, None, weights_bar
 
 
-# Private types ------------------------------------------------------------------------------------
 _Weight_VJP = Callable[[EncodingInferenceResult], tuple[hk.Params]]
 
 
@@ -544,7 +534,6 @@ class _EncodingResiduals:
     encoding: RivalEncoding
 
 
-# Bind vjp -----------------------------------------------------------------------------------------
 infer_encoding_configuration.defvjp(infer_encoding_configuration_fwd,
                                     infer_encoding_configuration_bwd)
 
