@@ -293,8 +293,7 @@ class NoisyMLP(hk.Module):
         self.activation = activation
         layers: list[Dense] = []
         for index, layer_output_features in enumerate(chain(layer_sizes, (output_features,))):
-            layers.append(Dense(output_features=layer_output_features,
-                                name=f"linear_{index}"))
+            layers.append(Dense(output_features=layer_output_features, name=f"linear_{index}"))
         self.layers = tuple[Dense, ...](layers)
 
     def __call__(self, inputs: RealArray) -> RealArray:
