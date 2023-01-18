@@ -36,7 +36,6 @@ def cli() -> None:
                                 gln_layer_sizes=(3,),
                                 distribution_info=distribution_info)
         gradient_transformation = Adam[hk.Params](1e-2)
-        solution = TrainingSolution.create(encoding, gradient_transformation, weight_rng)
         rl_inference = RLInference(encoding)
         state = SolutionState.create(gradient_transformation, encoding, weight_rng)
 
@@ -48,9 +47,9 @@ def cli() -> None:
         for i, example_rng in enumerate(example_rngs):
             observation = data_source.initial_state(example_rng)
             print_generic(iteration=i, observation=observation)
-            training_result = train_one_episode(solution.rl_inference, observation,
+            training_result = train_one_episode(rl_inference, observation,
                                                 state.model_weights, state.gradient_state,
-                                                solution.gradient_transformation)
+                                                gradient_transformation)
             state = SolutionState(training_result.gradient_state, training_result.model_weights)
         print_generic(state)
 
