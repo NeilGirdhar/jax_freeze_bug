@@ -11,20 +11,17 @@ import haiku as hk
 import jax.numpy as jnp
 import numpy as np
 import tensorflow_datasets as tfds
-from efax import (ExpectationParametrization, MultivariateFixedVarianceNormalNP,
-                  NaturalParametrization)
+from efax import MultivariateFixedVarianceNormalNP, NaturalParametrization
 from jax import Array, enable_custom_prng, grad, jit, jvp, vjp, vmap
 from jax._src.prng import PRNGKeyArray, threefry_prng_impl
-from jax.lax import dot, stop_gradient, while_loop
+from jax.lax import dot, stop_gradient
 from jax.nn import softplus
 from jax.random import KeyArray, PRNGKey, randint, split
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from more_itertools import mark_ends
 from tensorflow_datasets.core import DatasetInfo
-from tensorflow_datasets.core.features import Tensor
-from tjax import (BooleanNumeric, IntegralNumeric, RealArray, RealNumeric, custom_jvp, custom_vjp,
-                  print_generic)
+from tjax import BooleanNumeric, RealArray, RealNumeric, custom_jvp, custom_vjp, print_generic
 from tjax.dataclasses import dataclass, field
 from tjax.gradient import Adam, GradientState, GradientTransformation
 
@@ -53,16 +50,6 @@ def cli() -> None:
         print_generic(state)
 
 
-def expectation_parameters(feature_info: Any, value: Any) -> RealArray:
-    match feature_info:
-        case Tensor(shape=shape):
-            assert isinstance(value, np.ndarray)
-            assert value.shape[1:] == shape
-            new_shape = (value.shape[0], -1)
-            return np.reshape(value, new_shape)
-    raise TypeError
-
-
 @p_dataclass
 class DeductionDataSource:
     info: DatasetInfo
@@ -70,11 +57,7 @@ class DeductionDataSource:
 
     def initial_state(self, example_rng: KeyArray) -> RealArray:
         index = randint(example_rng, (), 0, len(self.dataset))
-        _, ds_label = self.dataset[index]
-        target: None | RealArray = None
-        for key, feature_info in self.info.features.items():  # pyright: ignore
-            if key == 'price':
-                target = expectation_parameters(feature_info, ds_label)
+        _, target = self.dataset[index]
         assert target is not None
         return target
 
@@ -193,7 +176,7 @@ class RLInference:
                           gradient_state: GradientState,
                           gradient_transformation: GradientTransformation[Any, hk.Params],
                           ) -> RLTrainingResult:
-        training_state = _TrainingState(observation, gradient_state, model_weights)
+        training_state = _TrainingState(jnp.reshape(observation, (1, 1)), gradient_state, model_weights)
         weights_bar, observation = self._v_infer_gradient_and_value(
             training_state.observations, training_state.model_weights)
 
