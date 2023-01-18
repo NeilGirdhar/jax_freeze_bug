@@ -171,13 +171,9 @@ class RivalEncoding:
                               natural_explanation: RealArray,
                               observation: RealArray,
                               weights: hk.Params) -> RealNumeric:
-        return self._explanation_energy(natural_explanation, observation, weights)
-
-    def intermediate_explanation(self,
-                                 natural_explanation: RealArray,
-                                 weights: hk.Params) -> RealArray:
         intermediate_explanation_f = hk.transform(self._intermediate_explanation).apply
-        return intermediate_explanation_f(weights, None, natural_explanation)
+        intermediate_explanation = intermediate_explanation_f(weights, None, natural_explanation)
+        return self.distribution_info.value_error(observation, intermediate_explanation)
 
     def haiku_weight_initializer(self) -> None:
         natural_explanation = jnp.zeros(1)
@@ -185,16 +181,7 @@ class RivalEncoding:
 
     def _intermediate_explanation(self, natural_explanation: RealArray) -> RealArray:
         gln_mlp = NoisyMLP((3,), 1, activation=softplus, name='gln')
-        value = gln_mlp(natural_explanation)
-        value += 1e-6 * odd_power(natural_explanation, 3.0)
-        return value
-
-    def _explanation_energy(self,
-                            natural_explanation: RealArray,
-                            observation: RealArray,
-                            weights: hk.Params) -> RealNumeric:
-        intermediate_explanation = self.intermediate_explanation(natural_explanation, weights)
-        return self.distribution_info.value_error(observation, intermediate_explanation)
+        return gln_mlp(natural_explanation) + 1e-6 * odd_power(natural_explanation, 3.0)
 
 
 def internal_infer_encoding(encoding: RivalEncoding,
