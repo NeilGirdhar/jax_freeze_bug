@@ -12,7 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 import tensorflow_datasets as tfds
 from efax import MultivariateFixedVarianceNormalNP, NaturalParametrization
-from jax import Array, enable_custom_prng, grad, jit, jvp, vjp, vmap
+from jax import enable_custom_prng, grad, jit, jvp, vjp, vmap
 from jax._src.prng import PRNGKeyArray, threefry_prng_impl
 from jax.lax import dot, stop_gradient
 from jax.nn import softplus
@@ -21,7 +21,7 @@ from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from more_itertools import mark_ends
 from tensorflow_datasets.core import DatasetInfo
-from tjax import BooleanNumeric, RealArray, RealNumeric, custom_jvp, custom_vjp, print_generic
+from tjax import RealArray, RealNumeric, custom_jvp, custom_vjp, print_generic
 from tjax.dataclasses import dataclass, field
 from tjax.gradient import Adam, GradientState, GradientTransformation
 
