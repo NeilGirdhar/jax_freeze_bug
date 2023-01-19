@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from functools import partial
 from itertools import chain
-from typing import Any, TypeVar
+from typing import Any
 
 import haiku as hk
 import jax.numpy as jnp
@@ -64,19 +64,16 @@ def create_data_source() -> DeductionDataSource:
     return DeductionDataSource(dataset)
 
 
-SST = TypeVar('SST', bound='SolutionState')
-
-
 @dataclass
 class SolutionState:
     gradient_state: GradientState
     model_weights: hk.Params
 
     @classmethod
-    def create(cls: type[SST],
+    def create(cls,
                gradient_transformation: GradientTransformation[Any, hk.Params],
                element: RivalEncoding,
-               weight_rng: KeyArray) -> SST:
+               weight_rng: KeyArray) -> SolutionState:
         weights = element.create_weights(weight_rng)
         gradient_state = gradient_transformation.init(weights)
         return cls(gradient_state, weights)
@@ -197,9 +194,6 @@ class SeekerLoss:
         return SeekerLoss(1.0)
 
 
-EIRT = TypeVar('EIRT', bound='EncodingInferenceResult')
-
-
 @dataclass
 class EncodingInferenceResult:
     observation: RealArray
@@ -207,10 +201,13 @@ class EncodingInferenceResult:
     seeker_loss: SeekerLoss
 
     @classmethod
-    def cotangent(cls: type[EIRT], encoding: RivalEncoding) -> EIRT:
+    def cotangent(cls) -> EncodingInferenceResult:
         observation = jnp.zeros(1)
         seeker_loss = SeekerLoss.cotangent()
         return cls(observation, 1.0, seeker_loss)
+
+
+_Weight_VJP = Callable[[EncodingInferenceResult], tuple[hk.Params]]
 
 
 @custom_vjp
@@ -223,29 +220,19 @@ def infer_encoding_configuration(encoding: RivalEncoding,
 def infer_encoding_configuration_fwd(encoding: RivalEncoding,
                                      observation: RealArray,
                                      weights: hk.Params) -> (
-                                         tuple[EncodingInferenceResult, _EncodingResiduals]):
+                                         tuple[EncodingInferenceResult, _Weight_VJP]):
 
     inference_result, weight_vjp = vjp(partial(internal_infer_encoding, encoding, observation),
                                        weights)
-    residuals = _EncodingResiduals(weight_vjp, encoding)
-    return inference_result, residuals
+    return inference_result, weight_vjp
 
 
-def infer_encoding_configuration_bwd(residuals: _EncodingResiduals,
+def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP,
                                      inference_result_bar: EncodingInferenceResult) -> (
                                          tuple[None, None, hk.Params]):
-    internal_result_bar = EncodingInferenceResult.cotangent(residuals.encoding)
-    weights_bar, = residuals.weight_vjp(internal_result_bar)
+    internal_result_bar = EncodingInferenceResult.cotangent()
+    weights_bar, = weight_vjp(internal_result_bar)
     return None, None, weights_bar
-
-
-_Weight_VJP = Callable[[EncodingInferenceResult], tuple[hk.Params]]
-
-
-@dataclass
-class _EncodingResiduals:
-    weight_vjp: _Weight_VJP  # For the weight cotangent.
-    encoding: RivalEncoding
 
 
 infer_encoding_configuration.defvjp(infer_encoding_configuration_fwd,
