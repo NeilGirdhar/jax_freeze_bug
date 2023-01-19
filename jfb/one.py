@@ -20,7 +20,6 @@ from jax.random import KeyArray, PRNGKey, randint, split
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from more_itertools import mark_ends
-from tensorflow_datasets.core import DatasetInfo
 from tjax import RealArray, RealNumeric, custom_vjp, print_generic
 from tjax.dataclasses import dataclass, field
 from tjax.gradient import Adam, GradientState, GradientTransformation
@@ -50,7 +49,6 @@ def cli() -> None:
 
 @p_dataclass
 class DeductionDataSource:
-    info: DatasetInfo
     dataset: list[tuple[Any, Any]]
 
     def initial_state(self, example_rng: KeyArray) -> RealArray:
@@ -61,17 +59,15 @@ class DeductionDataSource:
 
 
 def create_data_source() -> DeductionDataSource:
-    ds_map, info = tfds.load('diamonds', as_supervised=True, with_info=True, batch_size=1)
+    ds_map, _ = tfds.load('diamonds', as_supervised=True, with_info=True, batch_size=1)
     ds = ds_map['train']
     ds_numpy = tfds.as_numpy(ds)
-    assert isinstance(info, DatasetInfo)
     assert isinstance(ds_numpy, Iterable)  # Iterable[tuple[Any, Any]]
     dataset = list(ds_numpy)
     print(f"Loaded dataset of size {len(dataset)}")
-    return DeductionDataSource(info, dataset)
+    return DeductionDataSource(dataset)
 
 
-SolutionGT = GradientTransformation[Any, hk.Params]
 SST = TypeVar('SST', bound='SolutionState')
 
 
@@ -82,7 +78,7 @@ class SolutionState:
 
     @classmethod
     def create(cls: type[SST],
-               gradient_transformation: SolutionGT,
+               gradient_transformation: GradientTransformation[Any, hk.Params],
                element: RivalEncoding,
                weight_rng: KeyArray) -> SST:
         weights = element.create_weights(weight_rng)
