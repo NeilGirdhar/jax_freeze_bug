@@ -29,9 +29,7 @@ def cli() -> None:
     with enable_custom_prng():
         weight_rng = PRNGKeyArray(threefry_prng_impl,
                                   jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
-        distribution_cls = MultivariateUnitNormalNP
-        distribution_info = DistributionInfo(distribution_cls)
-        encoding = RivalEncoding(distribution_info=distribution_info)
+        encoding = RivalEncoding()
         gradient_transformation = Adam[hk.Params](1e-2)
         rl_inference = RLInference(encoding)
         state = SolutionState.create(gradient_transformation, encoding, weight_rng)
@@ -86,18 +84,11 @@ class SolutionState:
         return cls(gradient_state, weights)
 
 
-@dataclass
-class DistributionInfo:
-    nat_cls: type[NaturalParametrization[Any, Any]] = field(static=True)
-
-    def value_error(self,
-                    expectation_observation: RealArray,
-                    natural_explanation: RealArray
-                    ) -> RealNumeric:
-        exp_cls = self.nat_cls.expectation_parametrization_cls()
-        expectation_parametrization = exp_cls.unflattened(expectation_observation)
-        natural_parametrization = self.nat_cls.unflattened(natural_explanation)
-        return expectation_parametrization.kl_divergence(natural_parametrization)
+def value_error(expectation_observation: RealArray, natural_explanation: RealArray) -> RealNumeric:
+    exp_cls = MultivariateUnitNormalNP.expectation_parametrization_cls()
+    expectation_parametrization = exp_cls.unflattened(expectation_observation)
+    natural_parametrization = MultivariateUnitNormalNP.unflattened(natural_explanation)
+    return expectation_parametrization.kl_divergence(natural_parametrization)
 
 
 @dataclass
@@ -150,9 +141,6 @@ def odd_power(base: RealArray, exponent: RealNumeric) -> RealArray:
 
 @dataclass
 class RivalEncoding:
-    _: KW_ONLY
-    distribution_info: DistributionInfo
-
     def create_weights(self, rng: KeyArray) -> hk.Params:
         transformed = hk.transform(self.haiku_weight_initializer)
         return transformed.init(rng)
@@ -163,7 +151,7 @@ class RivalEncoding:
                               weights: hk.Params) -> RealNumeric:
         intermediate_explanation_f = hk.transform(self._intermediate_explanation).apply
         intermediate_explanation = intermediate_explanation_f(weights, None, natural_explanation)
-        return self.distribution_info.value_error(observation, intermediate_explanation)
+        return value_error(observation, intermediate_explanation)
 
     def haiku_weight_initializer(self) -> None:
         natural_explanation = jnp.zeros(1)
