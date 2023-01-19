@@ -32,36 +32,26 @@ def cli() -> None:
         rl_inference = RLInference(encoding)
         state = SolutionState.create(gradient_transformation, encoding, weight_rng)
 
-        data_source = create_data_source()
+        dataset = create_data_source()
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
         example_rngs = split(example_rng_base, 5000)
         for i, example_rng in enumerate(example_rngs):
-            observation = data_source.initial_state(example_rng)
+            index = randint(example_rng, (), 0, len(dataset))
+            observation = dataset[index]
             print_generic(iteration=i, observation=observation)
             state = rl_inference.train_one_episode(observation, state, gradient_transformation)
         print_generic(state)
 
 
-@dataclass
-class DeductionDataSource:
-    dataset: list[tuple[Any, Any]]
-
-    def initial_state(self, example_rng: KeyArray) -> RealArray:
-        index = randint(example_rng, (), 0, len(self.dataset))
-        _, target = self.dataset[index]
-        assert target is not None
-        return target
-
-
-def create_data_source() -> DeductionDataSource:
+def create_data_source() -> list[RealArray]:
     ds_map, _ = tfds.load('diamonds', as_supervised=True, with_info=True, batch_size=1)
     ds = ds_map['train']
     ds_numpy = tfds.as_numpy(ds)
     assert isinstance(ds_numpy, Iterable)  # Iterable[tuple[Any, Any]]
-    dataset = list(ds_numpy)
+    dataset = [x for _, x in ds_numpy]
     print(f"Loaded dataset of size {len(dataset)}")
-    return DeductionDataSource(dataset)
+    return dataset
 
 
 @dataclass
