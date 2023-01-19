@@ -84,13 +84,6 @@ class SolutionState:
         return cls(gradient_state, weights)
 
 
-def value_error(expectation_observation: RealArray, natural_explanation: RealArray) -> RealNumeric:
-    exp_cls = MultivariateUnitNormalNP.expectation_parametrization_cls()
-    expectation_parametrization = exp_cls.unflattened(expectation_observation)
-    natural_parametrization = MultivariateUnitNormalNP.unflattened(natural_explanation)
-    return expectation_parametrization.kl_divergence(natural_parametrization)
-
-
 @dataclass
 class RLInference:
     encoding: RivalEncoding
@@ -151,7 +144,10 @@ class RivalEncoding:
                               weights: hk.Params) -> RealNumeric:
         intermediate_explanation_f = hk.transform(self._intermediate_explanation).apply
         intermediate_explanation = intermediate_explanation_f(weights, None, natural_explanation)
-        return value_error(observation, intermediate_explanation)
+        exp_cls = MultivariateUnitNormalNP.expectation_parametrization_cls()
+        expectation_parametrization = exp_cls.unflattened(observation)
+        natural_parametrization = MultivariateUnitNormalNP.unflattened(intermediate_explanation)
+        return expectation_parametrization.kl_divergence(natural_parametrization)
 
     def haiku_weight_initializer(self) -> None:
         natural_explanation = jnp.zeros(1)
