@@ -7,7 +7,7 @@ from typing import Any
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, custom_vjp, enable_custom_prng, grad, jit, vjp, vmap
-from jax.lax import dot, stop_gradient
+from jax.lax import dot
 from jax.nn import softplus
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
@@ -112,30 +112,12 @@ def energy(natural_explanation: Array, observation: Array, weights: Array) -> Ar
 
 def internal_infer_encoding(observation: Array,
                             weights: Array) -> EncodingInferenceResult:
-    observation = stop_gradient(observation)
     inferred_message = jnp.zeros(1)
-    # Stop gradient at the initial inferred message because we don't want to train the variational
-    # inference here.
-    inferred_message = stop_gradient(inferred_message)
-
     minimizer = GradientDescent(energy, has_aux=False, maxiter=250, tol=0.001,
                                 acceleration=False)
-    # weights = print_cotangent(weights, name='weight_bar')
-    # tapped_print_generic(weights=weights)
-    # inferred_message = tapped_print_generic(inferred_message=inferred_message,
-    #                                         observation=observation, weights=weights,
-    #                                         result=inferred_message)
     minimizer_result = minimizer.run(inferred_message, observation=observation,
                                      weights=weights)
-    # minimizer_result = print_cotangent(minimizer_result, name='minimizer_result_bar')
-    # tapped_print_generic(minimizer_result=minimizer_result)
-
-    # Calculate intermediate quantities.
-    inferred_message = minimizer_result.params
-    centering_loss = jnp.sum(jnp.square(inferred_message))
-
-    # Calculate seeker loss.
-    seeker_loss = centering_loss * 1e-1
+    seeker_loss = jnp.sum(jnp.square(minimizer_result.params)) * 1e-1
     return EncodingInferenceResult(observation, jnp.array(0.0), seeker_loss)
 
 
