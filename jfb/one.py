@@ -15,9 +15,10 @@ from jax.nn import softplus
 from jax.random import PRNGKey, split
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
+from optax import EmptyState, ScaleByAdamState
 from tjax import RealArray, print_generic
 from tjax.dataclasses import dataclass
-from tjax.gradient import Adam, GradientState, GradientTransformation
+from tjax.gradient import Adam, GenericGradientState, GradientState, GradientTransformation
 
 
 @dataclass
@@ -35,14 +36,25 @@ def cli() -> None:
         rl_inference = RLInference(encoding)
         weight_rng = PRNGKeyArray(threefry_prng_impl,
                                   jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
-        weights = Weights(w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
-                          b1=jnp.array([0., 0., 0.], dtype=np.float32),
-                          w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=np.float32),
-                          b2=jnp.array([0.], dtype=np.float32))
-        gradient_state = gradient_transformation.init(weights)
+        weights = Weights(b1=jnp.array([0., 0., 0.], dtype=np.float32),
+                          w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
+                          b2=jnp.array([0.], dtype=np.float32),
+                          w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=np.float32))
+        gradient_state = GenericGradientState(
+            (ScaleByAdamState(
+                jnp.asarray(5),
+                Weights(b1=jnp.asarray([-15.569108, -8.185916, -18.872583]),
+                        w1=jnp.asarray([[-6488.655, -5813.5786, -11111.309]]),
+                        b2=jnp.asarray([-16.122942]),
+                        w2=jnp.asarray([[-5100.7495], [-6862.2837], [-8967.359]])),
+                Weights(b1=jnp.asarray([7.211683, 1.9927658, 10.598419]),
+                        w1=jnp.asarray([[1289447., 1035597.7, 3784737.8]]),
+                        b2=jnp.asarray([7.749687]),
+                        w2=jnp.asarray([[797202.94], [1442427.9], [2465843.5]]))),
+             EmptyState()))
         state = SolutionState(gradient_state, weights)
 
-        dataset = [6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000, 2681.0000]
+        dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000]
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
         example_rngs = split(example_rng_base, 5000)
