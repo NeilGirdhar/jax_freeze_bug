@@ -39,7 +39,8 @@ def cli() -> None:
         for i, example_rng in enumerate(example_rngs):
             index = randint(example_rng, (), 0, len(dataset))
             observation = dataset[index].astype(jnp.ones(()).dtype)
-            print_generic(iteration=i, weights=state.model_weights, observation=observation)
+            print_generic(iteration=i, weights=state.model_weights, observation=observation,
+                          gs=state.gradient_state)
             state = rl_inference.train_one_episode(observation, state, gradient_transformation)
         print_generic(state)
 
