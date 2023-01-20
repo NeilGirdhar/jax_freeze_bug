@@ -25,12 +25,15 @@ from tjax.gradient import Adam, GradientState, GradientTransformation
 
 def cli() -> None:
     with enable_custom_prng():
-        weight_rng = PRNGKeyArray(threefry_prng_impl,
-                                  jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
         encoding = RivalEncoding()
         gradient_transformation = Adam[hk.Params](1e-2)
         rl_inference = RLInference(encoding)
-        state = SolutionState.create(gradient_transformation, encoding, weight_rng)
+        weight_rng = PRNGKeyArray(threefry_prng_impl,
+                                  jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
+        weights = encoding.create_weights(weight_rng)
+        gradient_state = gradient_transformation.init(weights)
+        state = SolutionState(gradient_state, weights)
+
 
         dataset = create_data_source()
         rng = PRNGKey(5)
@@ -59,15 +62,6 @@ def create_data_source() -> list[Array]:
 class SolutionState:
     gradient_state: GradientState
     model_weights: hk.Params
-
-    @classmethod
-    def create(cls,
-               gradient_transformation: GradientTransformation[Any, hk.Params],
-               element: RivalEncoding,
-               weight_rng: KeyArray) -> SolutionState:
-        weights = element.create_weights(weight_rng)
-        gradient_state = gradient_transformation.init(weights)
-        return cls(gradient_state, weights)
 
 
 @dataclass
