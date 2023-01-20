@@ -8,7 +8,6 @@ from typing import Any
 import haiku as hk
 import jax.numpy as jnp
 import numpy as np
-import tensorflow_datasets as tfds
 from efax import MultivariateUnitNormalNP
 from jax import Array, custom_vjp, enable_custom_prng, grad, jit, vjp, vmap
 from jax._src.prng import PRNGKeyArray, threefry_prng_impl
@@ -34,28 +33,16 @@ def cli() -> None:
         gradient_state = gradient_transformation.init(weights)
         state = SolutionState(gradient_state, weights)
 
-
-        dataset = create_data_source()
+        dataset = [6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000, 2681.0000]
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
         example_rngs = split(example_rng_base, 5000)
-        for i, example_rng in enumerate(example_rngs):
-            index = randint(example_rng, (), 0, len(dataset))
-            observation = dataset[index].astype(jnp.ones(()).dtype)
+        for i, observation in enumerate(dataset):
+            observation = jnp.asarray(observation)
             print_generic(iteration=i, weights=state.model_weights, observation=observation,
                           gs=state.gradient_state)
             state = rl_inference.train_one_episode(observation, state, gradient_transformation)
         print_generic(state)
-
-
-def create_data_source() -> list[Array]:
-    ds_map, _ = tfds.load('diamonds', as_supervised=True, with_info=True, batch_size=1)
-    ds = ds_map['train']
-    ds_numpy = tfds.as_numpy(ds)
-    assert isinstance(ds_numpy, Iterable)  # Iterable[tuple[Any, Any]]
-    dataset = [x for _, x in ds_numpy]
-    print(f"Loaded dataset of size {len(dataset)}")
-    return dataset
 
 
 @dataclass
