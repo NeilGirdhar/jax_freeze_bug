@@ -25,6 +25,12 @@ class Weights:
     w2: Array
 
 
+@dataclass
+class SolutionState:
+    gradient_state: GradientState
+    weights: Array
+
+
 def cli() -> None:
     gradient_transformation = Adam[Array](1e-2)
     weights = Weights(b1=jnp.array([0., 0., 0.], dtype=np.float32),
@@ -50,16 +56,8 @@ def cli() -> None:
         observation = jnp.asarray(observation)
         print_generic(iteration=i, weights=state.weights, observation=observation,
                       gs=state.gradient_state)
-        # print(get_test_string(weights, 1e-6, 0.0))
-        # print(get_test_string(state.gradient_state, 1e-6, 0.0))
         state = train_one_episode(observation, state, gradient_transformation)
     print_generic(state)
-
-
-@dataclass
-class SolutionState:
-    gradient_state: GradientState
-    weights: Array
 
 
 @jit
@@ -75,9 +73,8 @@ def train_one_episode(observation: Array,
     return SolutionState(new_gradient_state, new_weights)
 
 
-def _infer(observation: Array,
-           weights: Array) -> tuple[Array, Array]:
-    seeker_loss = infer_encoding_configuration(observation, weights)
+def _infer(observation: Array, weights: Array) -> tuple[Array, Array]:
+    seeker_loss = internal_infer_co(observation, weights)
     return seeker_loss, observation
 
 
@@ -106,13 +103,9 @@ def energy(natural_explanation: Array, observation: Array, weights: Array) -> Ar
     return dot(p - q, p) + 0.5 * jnp.sum(jnp.square(q)) - 0.5 * jnp.sum(jnp.square(p))
 
 
-def internal_infer_encoding(observation: Array,
-                            weights: Array) -> Array:
-    inferred_message = jnp.zeros(1)
-    minimizer = GradientDescent(energy, has_aux=False, maxiter=250, tol=0.001,
-                                acceleration=False)
-    minimizer_result = minimizer.run(inferred_message, observation=observation,
-                                     weights=weights)
+def internal_infer(observation: Array, weights: Array) -> Array:
+    minimizer = GradientDescent(energy, has_aux=False, maxiter=250, tol=0.001, acceleration=False)
+    minimizer_result = minimizer.run(jnp.zeros(1), observation=observation, weights=weights)
     return jnp.sum(jnp.square(minimizer_result.params)) * 1e-1
 
 
@@ -120,22 +113,17 @@ _Weight_VJP = Callable[[Array], tuple[Array]]
 
 
 @custom_vjp
-def infer_encoding_configuration(observation: Array, weights: Array) -> Array:
-    return internal_infer_encoding(observation, weights)
+def internal_infer_co(observation: Array, weights: Array) -> Array:
+    return internal_infer(observation, weights)
 
 
-def infer_encoding_configuration_fwd(observation: Array,
-                                     weights: Array
-                                     ) -> tuple[Array, _Weight_VJP]:
-
-    seeker_loss, weight_vjp = vjp(partial(internal_infer_encoding, observation), weights)
-    return seeker_loss, weight_vjp
+def internal_infer_co_fwd(observation: Array, weights: Array) -> tuple[Array, _Weight_VJP]:
+    return vjp(partial(internal_infer, observation), weights)
 
 
-def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP, _: Array) -> tuple[None, Array]:
+def internal_infer_co_bwd(weight_vjp: _Weight_VJP, _: Array) -> tuple[None, Array]:
     weights_bar, = weight_vjp(jnp.ones(()))
     return None, weights_bar
 
 
-infer_encoding_configuration.defvjp(infer_encoding_configuration_fwd,
-                                    infer_encoding_configuration_bwd)
+internal_infer_co.defvjp(internal_infer_co_fwd, internal_infer_co_bwd)
