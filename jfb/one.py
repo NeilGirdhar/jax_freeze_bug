@@ -78,14 +78,12 @@ def train_one_episode(observation: Array,
 def _infer(observation: Array,
            weights: Array) -> tuple[Array, Array]:
     inference_result = infer_encoding_configuration(observation, weights)
-    new_model_loss = inference_result.dummy_loss
-    return new_model_loss, observation
+    return inference_result.seeker_loss, observation
 
 
 def _infer_gradient_and_value(observation: Array, weights: Array) -> tuple[Array, Array]:
     bound_infer = partial(_infer, observation)
-    f: Callable[[Array], tuple[Array, Array]]
-    f = grad(bound_infer, has_aux=True)
+    f: Callable[[Array], tuple[Array, Array]] = grad(bound_infer, has_aux=True)
     return f(weights)
 
 
@@ -116,13 +114,12 @@ def internal_infer_encoding(observation: Array,
     minimizer_result = minimizer.run(inferred_message, observation=observation,
                                      weights=weights)
     seeker_loss = jnp.sum(jnp.square(minimizer_result.params)) * 1e-1
-    return EncodingInferenceResult(observation, jnp.array(0.0), seeker_loss)
+    return EncodingInferenceResult(observation, seeker_loss)
 
 
 @dataclass
 class EncodingInferenceResult:
     observation: Array
-    dummy_loss: Array
     seeker_loss: Array
 
 
@@ -145,7 +142,7 @@ def infer_encoding_configuration_fwd(observation: Array,
 
 def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP, _: EncodingInferenceResult
                                      ) -> tuple[None, None, Array]:
-    internal_result_bar = EncodingInferenceResult(jnp.zeros(1), jnp.ones(()), jnp.ones(()))
+    internal_result_bar = EncodingInferenceResult(jnp.zeros(1), jnp.ones(()))
     weights_bar, = weight_vjp(internal_result_bar)
     return None, weights_bar
 
