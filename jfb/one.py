@@ -6,13 +6,13 @@ from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
-from jax import Array, custom_vjp, enable_custom_prng, grad, jit, vjp, vmap
+from jax import Array, custom_vjp, grad, jit, vjp, vmap
 from jax.lax import dot
 from jax.nn import softplus
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from optax import EmptyState, ScaleByAdamState
-from tjax import Array, print_generic
+from tjax import print_generic
 from tjax.dataclasses import dataclass
 from tjax.gradient import Adam, GenericGradientState, GradientState, GradientTransformation
 
@@ -26,35 +26,34 @@ class Weights:
 
 
 def cli() -> None:
-    with enable_custom_prng():
-        gradient_transformation = Adam[Array](1e-2)
-        weights = Weights(b1=jnp.array([0., 0., 0.], dtype=np.float32),
-                          w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
-                          b2=jnp.array([0.], dtype=np.float32),
-                          w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=np.float32))
-        gradient_state = GenericGradientState(
-            (ScaleByAdamState(
-                jnp.asarray(5),
-                Weights(b1=jnp.asarray([-15.569108, -8.185916, -18.872583]),
-                        w1=jnp.asarray([[-6488.655, -5813.5786, -11111.309]]),
-                        b2=jnp.asarray([-16.122942]),
-                        w2=jnp.asarray([[-5100.7495], [-6862.2837], [-8967.359]])),
-                Weights(b1=jnp.asarray([7.211683, 1.9927658, 10.598419]),
-                        w1=jnp.asarray([[1289447., 1035597.7, 3784737.8]]),
-                        b2=jnp.asarray([7.749687]),
-                        w2=jnp.asarray([[797202.94], [1442427.9], [2465843.5]]))),
-             EmptyState()))
-        state = SolutionState(gradient_state, weights)
+    gradient_transformation = Adam[Array](1e-2)
+    weights = Weights(b1=jnp.array([0., 0., 0.], dtype=np.float32),
+                      w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
+                      b2=jnp.array([0.], dtype=np.float32),
+                      w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=np.float32))
+    gradient_state = GenericGradientState(
+        (ScaleByAdamState(
+            jnp.asarray(5),
+            Weights(b1=jnp.asarray([-15.569108, -8.185916, -18.872583]),
+                    w1=jnp.asarray([[-6488.655, -5813.5786, -11111.309]]),
+                    b2=jnp.asarray([-16.122942]),
+                    w2=jnp.asarray([[-5100.7495], [-6862.2837], [-8967.359]])),
+            Weights(b1=jnp.asarray([7.211683, 1.9927658, 10.598419]),
+                    w1=jnp.asarray([[1289447., 1035597.7, 3784737.8]]),
+                    b2=jnp.asarray([7.749687]),
+                    w2=jnp.asarray([[797202.94], [1442427.9], [2465843.5]]))),
+            EmptyState()))
+    state = SolutionState(gradient_state, weights)
 
-        dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000] * 10
-        for i, observation in enumerate(dataset):
-            observation = jnp.asarray(observation)
-            print_generic(iteration=i, weights=state.weights, observation=observation,
-                          gs=state.gradient_state)
-            # print(get_test_string(weights, 1e-6, 0.0))
-            # print(get_test_string(state.gradient_state, 1e-6, 0.0))
-            state = train_one_episode(observation, state, gradient_transformation)
-        print_generic(state)
+    dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000] * 10
+    for i, observation in enumerate(dataset):
+        observation = jnp.asarray(observation)
+        print_generic(iteration=i, weights=state.weights, observation=observation,
+                      gs=state.gradient_state)
+        # print(get_test_string(weights, 1e-6, 0.0))
+        # print(get_test_string(state.gradient_state, 1e-6, 0.0))
+        state = train_one_episode(observation, state, gradient_transformation)
+    print_generic(state)
 
 
 @dataclass
@@ -69,8 +68,7 @@ def train_one_episode(observation: Array,
                       gradient_transformation: GradientTransformation[Any, Array],
                       ) -> SolutionState:
     observations = jnp.reshape(observation, (1, 1))
-    weights_bar, observation = _v_infer_gradient_and_value(observations,
-                                                                state.weights)
+    weights_bar, observation = _v_infer_gradient_and_value(observations, state.weights)
     new_weights_bar, new_gradient_state = gradient_transformation.update(
         weights_bar, state.gradient_state, state.weights)
     new_weights = tree_map(jnp.add, state.weights, new_weights_bar)
@@ -105,8 +103,8 @@ def odd_power(base: Array, exponent: Array) -> Array:
 def energy(natural_explanation: Array, observation: Array, weights: Array) -> Array:
     p = observation
     q = (dot(softplus(dot(natural_explanation, softplus(weights.w1)) + weights.b1),
-                softplus(weights.w2))
-            + weights.b2 + 1e-6 * odd_power(natural_explanation, jnp.array(3.0)))
+             softplus(weights.w2))
+         + weights.b2 + 1e-6 * odd_power(natural_explanation, jnp.array(3.0)))
     return dot(p - q, p) + 0.5 * jnp.sum(jnp.square(q)) - 0.5 * jnp.sum(jnp.square(p))
 
 
