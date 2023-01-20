@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from functools import partial
-from itertools import chain
 from typing import Any
 
 import haiku as hk
@@ -13,13 +12,20 @@ from jax import Array, custom_vjp, enable_custom_prng, grad, jit, vjp, vmap
 from jax._src.prng import PRNGKeyArray, threefry_prng_impl
 from jax.lax import dot, stop_gradient
 from jax.nn import softplus
-from jax.random import KeyArray, PRNGKey, randint, split
+from jax.random import PRNGKey, split
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
-from more_itertools import mark_ends
-from tjax import print_generic, get_test_string
+from tjax import RealArray, get_test_string, print_generic
 from tjax.dataclasses import dataclass
 from tjax.gradient import Adam, GradientState, GradientTransformation
+
+
+@dataclass
+class Weights:
+    b1: RealArray
+    w1: RealArray
+    b2: RealArray
+    w2: RealArray
 
 
 def cli() -> None:
@@ -29,7 +35,10 @@ def cli() -> None:
         rl_inference = RLInference(encoding)
         weight_rng = PRNGKeyArray(threefry_prng_impl,
                                   jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
-        weights = encoding.create_weights(weight_rng)
+        weights = Weights(w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
+                          b1=jnp.array([0., 0., 0.], dtype=np.float32),
+                          w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=np.float32),
+                          b2=jnp.array([0.], dtype=np.float32))
         gradient_state = gradient_transformation.init(weights)
         state = SolutionState(gradient_state, weights)
 
@@ -39,7 +48,7 @@ def cli() -> None:
         example_rngs = split(example_rng_base, 5000)
         for i, observation in enumerate(dataset):
             observation = jnp.asarray(observation)
-            print_generic(iteration=i, weights=state.model_weights, observation=observation,
+            print_generic(iteration=i, weights=state.weights, observation=observation,
                           gs=state.gradient_state)
             print(get_test_string(weights, 1e-6, 0.0))
             print(get_test_string(state.gradient_state, 1e-6, 0.0))
@@ -50,7 +59,7 @@ def cli() -> None:
 @dataclass
 class SolutionState:
     gradient_state: GradientState
-    model_weights: hk.Params
+    weights: RealArray
 
 
 @dataclass
@@ -65,34 +74,34 @@ class RLInference:
                           ) -> SolutionState:
         observations = jnp.reshape(observation, (1, 1))
         weights_bar, observation = self._v_infer_gradient_and_value(observations,
-                                                                    state.model_weights)
+                                                                    state.weights)
         new_weights_bar, new_gradient_state = gradient_transformation.update(
-            weights_bar, state.gradient_state, state.model_weights)
-        new_weights = tree_map(jnp.add, state.model_weights, new_weights_bar)
+            weights_bar, state.gradient_state, state.weights)
+        new_weights = tree_map(jnp.add, state.weights, new_weights_bar)
         return SolutionState(new_gradient_state, new_weights)
 
     def _infer(self,
                observation: Array,
-               model_weights: hk.Params) -> tuple[Array, Array]:
-        inference_result = infer_encoding_configuration(self.encoding, observation, model_weights)
+               weights: RealArray) -> tuple[Array, Array]:
+        inference_result = infer_encoding_configuration(self.encoding, observation, weights)
         new_model_loss = inference_result.dummy_loss
         return new_model_loss, observation
 
     def _infer_gradient_and_value(self,
                                   observation: Array,
-                                  model_weights: hk.Params) -> (
+                                  weights: RealArray) -> (
                                       tuple[hk.Params, Array]):
         bound_infer = partial(self._infer, observation)
         f: Callable[[hk.Params], tuple[hk.Params, Array]]
         f = grad(bound_infer, has_aux=True)
-        return f(model_weights)
+        return f(weights)
 
     def _v_infer_gradient_and_value(self,
                                     observations: Array,
-                                    model_weights: hk.Params) -> (
+                                    weights: RealArray) -> (
                                         tuple[hk.Params, Array]):
         f = vmap(self._infer_gradient_and_value, in_axes=(0, None), out_axes=(0, 0))
-        weights_bars, infer_outputs = f(observations, model_weights)
+        weights_bars, infer_outputs = f(observations, weights)
         weights_bar = tree_map(partial(jnp.mean, axis=0), weights_bars)
         return weights_bar, infer_outputs
 
@@ -103,16 +112,14 @@ def odd_power(base: Array, exponent: Array) -> Array:
 
 @dataclass
 class RivalEncoding:
-    def create_weights(self, rng: KeyArray) -> hk.Params:
-        transformed = hk.transform(self.haiku_weight_initializer)
-        return transformed.init(rng)
-
     def explanation_sp_energy(self,
                               natural_explanation: Array,
                               observation: Array,
-                              weights: hk.Params) -> Array:
-        intermediate_explanation_f = hk.transform(self._intermediate_explanation).apply
-        intermediate_explanation = intermediate_explanation_f(weights, None, natural_explanation)
+                              weights: RealArray) -> Array:
+        intermediate_explanation = (
+            dot(softplus(dot(natural_explanation, softplus(weights.w1)) + weights.b1),
+                softplus(weights.w2))
+            + weights.b2 + 1e-6 * odd_power(natural_explanation, jnp.array(3.0)))
         exp_cls = MultivariateUnitNormalNP.expectation_parametrization_cls()
         expectation_parametrization = exp_cls.unflattened(observation)
         natural_parametrization = MultivariateUnitNormalNP.unflattened(intermediate_explanation)
@@ -120,18 +127,10 @@ class RivalEncoding:
         assert isinstance(retval, Array)
         return retval
 
-    def haiku_weight_initializer(self) -> None:
-        natural_explanation = jnp.zeros(1)
-        self._intermediate_explanation(natural_explanation)
-
-    def _intermediate_explanation(self, natural_explanation: Array) -> Array:
-        gln_mlp = NoisyMLP((3,), 1, activation=softplus, name='gln')
-        return gln_mlp(natural_explanation) + 1e-6 * odd_power(natural_explanation, jnp.array(3.0))
-
 
 def internal_infer_encoding(encoding: RivalEncoding,
                             observation: Array,
-                            weights: hk.Params) -> EncodingInferenceResult:
+                            weights: RealArray) -> EncodingInferenceResult:
     encoding = stop_gradient(encoding)
     observation = stop_gradient(observation)
     inferred_message = jnp.zeros(1)
@@ -189,13 +188,13 @@ _Weight_VJP = Callable[[EncodingInferenceResult], tuple[hk.Params]]
 @custom_vjp
 def infer_encoding_configuration(encoding: RivalEncoding,
                                  observation: Array,
-                                 weights: hk.Params) -> EncodingInferenceResult:
+                                 weights: RealArray) -> EncodingInferenceResult:
     return internal_infer_encoding(encoding, observation, weights)
 
 
 def infer_encoding_configuration_fwd(encoding: RivalEncoding,
                                      observation: Array,
-                                     weights: hk.Params) -> (
+                                     weights: RealArray) -> (
                                          tuple[EncodingInferenceResult, _Weight_VJP]):
 
     inference_result, weight_vjp = vjp(partial(internal_infer_encoding, encoding, observation),
@@ -213,46 +212,3 @@ def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP,
 
 infer_encoding_configuration.defvjp(infer_encoding_configuration_fwd,
                                     infer_encoding_configuration_bwd)
-
-
-class NoisyMLP(hk.Module):
-    def __init__(self,
-                 layer_sizes: tuple[int, ...],
-                 output_features: int,
-                 *,
-                 activation: Callable[[Array], Array],
-                 name: None | str = None):
-        super().__init__(name=name)
-        self.layer_sizes = layer_sizes
-        self.output_features = output_features
-        self.activation = activation
-        layers: list[Dense] = []
-        for index, layer_output_features in enumerate(chain(layer_sizes, (output_features,))):
-            layers.append(Dense(output_features=layer_output_features, name=f"linear_{index}"))
-        self.layers = tuple[Dense, ...](layers)
-
-    def __call__(self, inputs: Array) -> Array:
-        value = inputs
-        for _, is_last, layer in mark_ends(self.layers):
-            value = layer(value)
-            if not is_last:
-                value = self.activation(value)
-        return value
-
-
-class Dense(hk.Module):
-    def __init__(self, output_features: int, *, name: None | str = None):
-        super().__init__(name=name)
-        self.output_features = output_features
-
-    def __call__(self, inputs: Array) -> Array:
-        input_features = inputs.shape[-1]
-        dtype = inputs.dtype
-        stddev = 0. if input_features == 0 else 1. / np.sqrt(input_features)
-        kernel_init = hk.initializers.TruncatedNormal(stddev=stddev)
-        kernel: Array = hk.get_parameter("w", [input_features, self.output_features], dtype,
-                                             init=kernel_init)
-        kernel = softplus(kernel)
-        y = dot(inputs, kernel)  # type: ignore[arg-type]
-        b: Array = hk.get_parameter("b", [self.output_features], dtype, init=jnp.zeros)
-        return y + b
