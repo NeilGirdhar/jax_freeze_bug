@@ -164,30 +164,15 @@ def internal_infer_encoding(encoding: RivalEncoding,
     centering_loss = jnp.sum(jnp.square(inferred_message))
 
     # Calculate seeker loss.
-    seeker_loss = SeekerLoss(centering_loss * 1e-1)
+    seeker_loss = centering_loss * 1e-1
     return EncodingInferenceResult(observation, jnp.array(0.0), seeker_loss)
-
-
-@dataclass
-class SeekerLoss:
-    centering_loss: Array
-
-    @classmethod
-    def cotangent(cls) -> SeekerLoss:
-        return SeekerLoss(jnp.array(1.0))
 
 
 @dataclass
 class EncodingInferenceResult:
     observation: Array
     dummy_loss: Array
-    seeker_loss: SeekerLoss
-
-    @classmethod
-    def cotangent(cls) -> EncodingInferenceResult:
-        observation = jnp.zeros(1)
-        seeker_loss = SeekerLoss.cotangent()
-        return cls(observation, jnp.array(1.0), seeker_loss)
+    seeker_loss: Array
 
 
 _Weight_VJP = Callable[[EncodingInferenceResult], tuple[Array]]
@@ -213,7 +198,7 @@ def infer_encoding_configuration_fwd(encoding: RivalEncoding,
 def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP,
                                      inference_result_bar: EncodingInferenceResult) -> (
                                          tuple[None, None, Array]):
-    internal_result_bar = EncodingInferenceResult.cotangent()
+    internal_result_bar = EncodingInferenceResult(jnp.zeros(1), jnp.ones(()), jnp.ones(()))
     weights_bar, = weight_vjp(internal_result_bar)
     return None, None, weights_bar
 
