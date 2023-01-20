@@ -6,7 +6,6 @@ from typing import Any
 
 import jax.numpy as jnp
 import numpy as np
-from efax import MultivariateUnitNormalNP
 from jax import Array, custom_vjp, enable_custom_prng, grad, jit, vjp, vmap
 from jax._src.prng import PRNGKeyArray, threefry_prng_impl
 from jax.lax import dot, stop_gradient
@@ -53,7 +52,7 @@ def cli() -> None:
              EmptyState()))
         state = SolutionState(gradient_state, weights)
 
-        dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000]
+        dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000] * 10
         rng = PRNGKey(5)
         example_rng_base, _ = split(rng)
         example_rngs = split(example_rng_base, 5000)
@@ -127,14 +126,14 @@ class RivalEncoding:
                               natural_explanation: Array,
                               observation: Array,
                               weights: Array) -> Array:
-        intermediate_explanation = (
-            dot(softplus(dot(natural_explanation, softplus(weights.w1)) + weights.b1),
-                softplus(weights.w2))
-            + weights.b2 + 1e-6 * odd_power(natural_explanation, jnp.array(3.0)))
-        exp_cls = MultivariateUnitNormalNP.expectation_parametrization_cls()
-        expectation_parametrization = exp_cls.unflattened(observation)
-        natural_parametrization = MultivariateUnitNormalNP.unflattened(intermediate_explanation)
-        return expectation_parametrization.kl_divergence(natural_parametrization)
+        p = observation
+        q = (dot(softplus(dot(natural_explanation, softplus(weights.w1)) + weights.b1),
+                 softplus(weights.w2))
+             + weights.b2 + 1e-6 * odd_power(natural_explanation, jnp.array(3.0)))
+        difference = p - q
+        return (dot(difference, p)
+                + 0.5 * jnp.sum(jnp.square(q))
+                - 0.5 * jnp.sum(jnp.square(p)))
 
 
 def internal_infer_encoding(encoding: RivalEncoding,
