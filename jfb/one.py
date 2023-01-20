@@ -134,9 +134,7 @@ class RivalEncoding:
         exp_cls = MultivariateUnitNormalNP.expectation_parametrization_cls()
         expectation_parametrization = exp_cls.unflattened(observation)
         natural_parametrization = MultivariateUnitNormalNP.unflattened(intermediate_explanation)
-        retval = expectation_parametrization.kl_divergence(natural_parametrization)
-        assert isinstance(retval, Array)
-        return retval
+        return expectation_parametrization.kl_divergence(natural_parametrization)
 
 
 def internal_infer_encoding(encoding: RivalEncoding,
