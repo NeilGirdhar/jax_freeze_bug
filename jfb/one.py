@@ -4,7 +4,6 @@ from collections.abc import Callable
 from functools import partial
 from typing import Any
 
-import haiku as hk
 import jax.numpy as jnp
 import numpy as np
 from efax import MultivariateUnitNormalNP
@@ -16,23 +15,23 @@ from jax.random import PRNGKey, split
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from optax import EmptyState, ScaleByAdamState
-from tjax import RealArray, print_generic
+from tjax import Array, print_generic
 from tjax.dataclasses import dataclass
 from tjax.gradient import Adam, GenericGradientState, GradientState, GradientTransformation
 
 
 @dataclass
 class Weights:
-    b1: RealArray
-    w1: RealArray
-    b2: RealArray
-    w2: RealArray
+    b1: Array
+    w1: Array
+    b2: Array
+    w2: Array
 
 
 def cli() -> None:
     with enable_custom_prng():
         encoding = RivalEncoding()
-        gradient_transformation = Adam[hk.Params](1e-2)
+        gradient_transformation = Adam[Array](1e-2)
         rl_inference = RLInference(encoding)
         weight_rng = PRNGKeyArray(threefry_prng_impl,
                                   jnp.array((2634740717, 3214329440), dtype=jnp.uint32))
@@ -71,7 +70,7 @@ def cli() -> None:
 @dataclass
 class SolutionState:
     gradient_state: GradientState
-    weights: RealArray
+    weights: Array
 
 
 @dataclass
@@ -82,7 +81,7 @@ class RLInference:
     def train_one_episode(self,
                           observation: Array,
                           state: SolutionState,
-                          gradient_transformation: GradientTransformation[Any, hk.Params],
+                          gradient_transformation: GradientTransformation[Any, Array],
                           ) -> SolutionState:
         observations = jnp.reshape(observation, (1, 1))
         weights_bar, observation = self._v_infer_gradient_and_value(observations,
@@ -94,24 +93,24 @@ class RLInference:
 
     def _infer(self,
                observation: Array,
-               weights: RealArray) -> tuple[Array, Array]:
+               weights: Array) -> tuple[Array, Array]:
         inference_result = infer_encoding_configuration(self.encoding, observation, weights)
         new_model_loss = inference_result.dummy_loss
         return new_model_loss, observation
 
     def _infer_gradient_and_value(self,
                                   observation: Array,
-                                  weights: RealArray) -> (
-                                      tuple[hk.Params, Array]):
+                                  weights: Array) -> (
+                                      tuple[Array, Array]):
         bound_infer = partial(self._infer, observation)
-        f: Callable[[hk.Params], tuple[hk.Params, Array]]
+        f: Callable[[Array], tuple[Array, Array]]
         f = grad(bound_infer, has_aux=True)
         return f(weights)
 
     def _v_infer_gradient_and_value(self,
                                     observations: Array,
-                                    weights: RealArray) -> (
-                                        tuple[hk.Params, Array]):
+                                    weights: Array) -> (
+                                        tuple[Array, Array]):
         f = vmap(self._infer_gradient_and_value, in_axes=(0, None), out_axes=(0, 0))
         weights_bars, infer_outputs = f(observations, weights)
         weights_bar = tree_map(partial(jnp.mean, axis=0), weights_bars)
@@ -127,7 +126,7 @@ class RivalEncoding:
     def explanation_sp_energy(self,
                               natural_explanation: Array,
                               observation: Array,
-                              weights: RealArray) -> Array:
+                              weights: Array) -> Array:
         intermediate_explanation = (
             dot(softplus(dot(natural_explanation, softplus(weights.w1)) + weights.b1),
                 softplus(weights.w2))
@@ -142,7 +141,7 @@ class RivalEncoding:
 
 def internal_infer_encoding(encoding: RivalEncoding,
                             observation: Array,
-                            weights: RealArray) -> EncodingInferenceResult:
+                            weights: Array) -> EncodingInferenceResult:
     encoding = stop_gradient(encoding)
     observation = stop_gradient(observation)
     inferred_message = jnp.zeros(1)
@@ -194,19 +193,19 @@ class EncodingInferenceResult:
         return cls(observation, jnp.array(1.0), seeker_loss)
 
 
-_Weight_VJP = Callable[[EncodingInferenceResult], tuple[hk.Params]]
+_Weight_VJP = Callable[[EncodingInferenceResult], tuple[Array]]
 
 
 @custom_vjp
 def infer_encoding_configuration(encoding: RivalEncoding,
                                  observation: Array,
-                                 weights: RealArray) -> EncodingInferenceResult:
+                                 weights: Array) -> EncodingInferenceResult:
     return internal_infer_encoding(encoding, observation, weights)
 
 
 def infer_encoding_configuration_fwd(encoding: RivalEncoding,
                                      observation: Array,
-                                     weights: RealArray) -> (
+                                     weights: Array) -> (
                                          tuple[EncodingInferenceResult, _Weight_VJP]):
 
     inference_result, weight_vjp = vjp(partial(internal_infer_encoding, encoding, observation),
@@ -216,7 +215,7 @@ def infer_encoding_configuration_fwd(encoding: RivalEncoding,
 
 def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP,
                                      inference_result_bar: EncodingInferenceResult) -> (
-                                         tuple[None, None, hk.Params]):
+                                         tuple[None, None, Array]):
     internal_result_bar = EncodingInferenceResult.cotangent()
     weights_bar, = weight_vjp(internal_result_bar)
     return None, None, weights_bar
