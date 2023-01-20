@@ -17,7 +17,7 @@ from jax.random import KeyArray, PRNGKey, randint, split
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from more_itertools import mark_ends
-from tjax import print_generic
+from tjax import print_generic, get_test_string
 from tjax.dataclasses import dataclass
 from tjax.gradient import Adam, GradientState, GradientTransformation
 
@@ -41,6 +41,8 @@ def cli() -> None:
             observation = jnp.asarray(observation)
             print_generic(iteration=i, weights=state.model_weights, observation=observation,
                           gs=state.gradient_state)
+            print(get_test_string(weights, 1e-6, 0.0))
+            print(get_test_string(state.gradient_state, 1e-6, 0.0))
             state = rl_inference.train_one_episode(observation, state, gradient_transformation)
         print_generic(state)
 
