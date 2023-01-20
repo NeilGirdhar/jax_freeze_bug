@@ -77,8 +77,8 @@ def train_one_episode(observation: Array,
 
 def _infer(observation: Array,
            weights: Array) -> tuple[Array, Array]:
-    inference_result = infer_encoding_configuration(observation, weights)
-    return inference_result.seeker_loss, observation
+    seeker_loss = infer_encoding_configuration(observation, weights)
+    return seeker_loss, observation
 
 
 def _infer_gradient_and_value(observation: Array, weights: Array) -> tuple[Array, Array]:
@@ -107,43 +107,33 @@ def energy(natural_explanation: Array, observation: Array, weights: Array) -> Ar
 
 
 def internal_infer_encoding(observation: Array,
-                            weights: Array) -> EncodingInferenceResult:
+                            weights: Array) -> Array:
     inferred_message = jnp.zeros(1)
     minimizer = GradientDescent(energy, has_aux=False, maxiter=250, tol=0.001,
                                 acceleration=False)
     minimizer_result = minimizer.run(inferred_message, observation=observation,
                                      weights=weights)
-    seeker_loss = jnp.sum(jnp.square(minimizer_result.params)) * 1e-1
-    return EncodingInferenceResult(observation, seeker_loss)
+    return jnp.sum(jnp.square(minimizer_result.params)) * 1e-1
 
 
-@dataclass
-class EncodingInferenceResult:
-    observation: Array
-    seeker_loss: Array
-
-
-_Weight_VJP = Callable[[EncodingInferenceResult], tuple[Array]]
+_Weight_VJP = Callable[[Array], tuple[Array]]
 
 
 @custom_vjp
-def infer_encoding_configuration(observation: Array, weights: Array) -> EncodingInferenceResult:
+def infer_encoding_configuration(observation: Array, weights: Array) -> Array:
     return internal_infer_encoding(observation, weights)
 
 
 def infer_encoding_configuration_fwd(observation: Array,
                                      weights: Array
-                                     ) -> tuple[EncodingInferenceResult, _Weight_VJP]:
+                                     ) -> tuple[Array, _Weight_VJP]:
 
-    inference_result, weight_vjp = vjp(partial(internal_infer_encoding, observation),
-                                       weights)
-    return inference_result, weight_vjp
+    seeker_loss, weight_vjp = vjp(partial(internal_infer_encoding, observation), weights)
+    return seeker_loss, weight_vjp
 
 
-def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP, _: EncodingInferenceResult
-                                     ) -> tuple[None, None, Array]:
-    internal_result_bar = EncodingInferenceResult(jnp.zeros(1), jnp.ones(()))
-    weights_bar, = weight_vjp(internal_result_bar)
+def infer_encoding_configuration_bwd(weight_vjp: _Weight_VJP, _: Array) -> tuple[None, Array]:
+    weights_bar, = weight_vjp(jnp.ones(()))
     return None, weights_bar
 
 
