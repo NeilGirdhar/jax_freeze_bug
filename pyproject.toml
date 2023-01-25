@@ -25,13 +25,13 @@ classifiers = [
 python = '>=3.10, <3.11'
 dm-haiku = {git = "https://github.com/deepmind/dm-haiku.git"}
 efax = '>=1.9'
-jax = '>=0.3.16'
+jax = '>=0.4.2'
 jaxopt = '>=0.5.5'
 more-itertools = '>=8.14'
 numpy = '>=1.22'
 tensorflow = '>=2.11.0'
 tensorflow_datasets = '>=4.5.2'
-tjax = '>=0.23.1'
+tjax = '>=0.25.3'
 
 [tool.poetry.group.dev.dependencies]
 flake8 = '>=3.9'
