@@ -11,19 +11,17 @@ from jax.nn import softplus
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
 from tjax import RealArray, print_generic
-from tjax.dataclasses import dataclass
+from typing import NamedTuple
 
 
-@dataclass
-class Weights:
+class Weights(NamedTuple):
     b1: Array
     w1: Array
     b2: Array
     w2: Array
 
 
-@dataclass
-class AdamState:
+class AdamState(NamedTuple):
     count: RealArray
     mu: Weights
     nu: Weights
@@ -63,8 +61,7 @@ eps = 1e-8
 learning_rate = 1e-2
 
 
-@dataclass
-class Adam:
+class Adam(NamedTuple):
     b1: RealArray = jnp.asarray(0.9)
     b2: RealArray = jnp.asarray(0.999)
 
@@ -88,8 +85,7 @@ class Adam:
         return gradient, AdamState(count=count_inc, mu=mu, nu=nu)
 
 
-@dataclass
-class SolutionState:
+class SolutionState(NamedTuple):
     gradient_state: AdamState
     weights: Weights
 
