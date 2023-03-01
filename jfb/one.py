@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
-from typing import Any
 
+import chex
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, custom_vjp, grad, jit, vjp, vmap
@@ -11,10 +11,14 @@ from jax.lax import dot
 from jax.nn import softplus
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
-from optax import EmptyState, ScaleByAdamState
-from tjax import print_generic
+from tjax import RealArray, RealNumeric, print_generic
 from tjax.dataclasses import dataclass
-from tjax.gradient import Adam, GenericGradientState, GradientState, GradientTransformation
+
+
+def abs_sq(x: chex.Array) -> chex.Array:
+  if not isinstance(x, (np.ndarray, jnp.ndarray)):
+    raise ValueError(f"`abs_sq` accepts only NDarrays, got: {x}.")
+  return (x.conj() * x).real
 
 
 @dataclass
@@ -26,29 +30,108 @@ class Weights:
 
 
 @dataclass
+class AdamState:
+    count: RealArray
+    mu: Weights
+    nu: Weights
+
+
+def safe_int32_increment(count: RealArray) -> RealArray:
+  chex.assert_type(count, jnp.int32)
+  max_int32_value = jnp.iinfo(jnp.int32).max
+  one = jnp.array(1, dtype=jnp.int32)
+  return jnp.where(count < max_int32_value, count + one, max_int32_value)
+
+
+def update_moment(updates, moments, decay, order):
+  """Compute the exponential moving average of the `order-th` moment."""
+  return tree_map(
+      lambda g, t: (1 - decay) * (g ** order) + decay * t, updates, moments)
+
+
+def update_moment_per_elem_norm(updates, moments, decay, order):
+  """Compute the EMA of the `order`-th moment of the element-wise norm."""
+
+  def orderth_norm(g):
+    if jnp.isrealobj(g):
+      return g ** order
+    else:
+      half_order = order / 2
+      # JAX generates different HLO for int and float `order`
+      if half_order.is_integer():
+        half_order = int(half_order)
+      return abs_sq(g) ** half_order
+
+  return tree_map(lambda g, t: (1 - decay) * orderth_norm(g) + decay * t, updates, moments)
+
+
+@partial(jit, inline=True)
+def bias_correction(moment, decay, count):
+  bias_correction_ = 1 - decay**count
+
+  # Perform division in the original precision.
+  return tree_map(lambda t: t / bias_correction_.astype(t.dtype), moment)
+
+
+def cast_tree(tree, dtype):
+  """Cast tree to given dtype, skip if None."""
+  if dtype is not None:
+    return tree_map(lambda t: t.astype(dtype), tree)
+  else:
+    return tree
+
+
+@dataclass
+class Adam:
+    learning_rate: RealArray
+    b1: RealNumeric = 0.9
+    b2: RealNumeric = 0.999
+    eps: RealNumeric = 1e-8
+    eps_root: RealNumeric = 0.0
+
+    def init(self, parameters: Weights) -> AdamState:
+        return AdamState(mu=tree_map(lambda t: jnp.zeros_like(t), parameters),
+                         nu=tree_map(lambda t: jnp.zeros_like(t), parameters),
+                         count=jnp.zeros([], jnp.int32))
+
+    def update(self,
+               gradient: Weights,
+               state: AdamState,
+               parameters: Weights | None) -> tuple[Weights, AdamState]:
+        mu = update_moment(gradient, state.mu, self.b1, 1)
+        nu = update_moment_per_elem_norm(gradient, state.nu, self.b2, 2)
+        count_inc = safe_int32_increment(state.count)
+        mu_hat = bias_correction(mu, self.b1, count_inc)
+        nu_hat = bias_correction(nu, self.b2, count_inc)
+        gradient = tree_map(
+            lambda m, v: m / (jnp.sqrt(v + self.eps_root) + self.eps), mu_hat, nu_hat)
+        gradient = tree_map(lambda m: m * -self.learning_rate, gradient)
+        return gradient, AdamState(count=count_inc, mu=mu, nu=nu)
+
+
+@dataclass
 class SolutionState:
-    gradient_state: GradientState
+    gradient_state: AdamState
     weights: Weights
 
 
 def cli() -> None:
-    gradient_transformation = Adam[Weights](1e-2)
+    gradient_transformation = Adam(jnp.asarray(1e-2))
     weights = Weights(b1=jnp.array([0., 0., 0.], dtype=np.float32),
                       w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
                       b2=jnp.array([0.], dtype=np.float32),
                       w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=np.float32))
-    gradient_state = GenericGradientState(
-        (ScaleByAdamState(
-            jnp.asarray(5),
-            Weights(b1=jnp.asarray([-15.569108, -8.185916, -18.872583]),
-                    w1=jnp.asarray([[-6488.655, -5813.5786, -11111.309]]),
-                    b2=jnp.asarray([-16.122942]),
-                    w2=jnp.asarray([[-5100.7495], [-6862.2837], [-8967.359]])),
-            Weights(b1=jnp.asarray([7.211683, 1.9927658, 10.598419]),
-                    w1=jnp.asarray([[1289447., 1035597.7, 3784737.8]]),
-                    b2=jnp.asarray([7.749687]),
-                    w2=jnp.asarray([[797202.94], [1442427.9], [2465843.5]]))),
-            EmptyState()))
+    gradient_state = AdamState(
+        count=jnp.asarray(5),
+        mu=Weights(b1=jnp.asarray([-15.569108, -8.185916, -18.872583]),
+                   w1=jnp.asarray([[-6488.655, -5813.5786, -11111.309]]),
+                   b2=jnp.asarray([-16.122942]),
+                   w2=jnp.asarray([[-5100.7495], [-6862.2837], [-8967.359]])),
+        nu=Weights(b1=jnp.asarray([7.211683, 1.9927658, 10.598419]),
+                   w1=jnp.asarray([[1289447., 1035597.7, 3784737.8]]),
+                   b2=jnp.asarray([7.749687]),
+                   w2=jnp.asarray([[797202.94], [1442427.9], [2465843.5]])))
+
     state = SolutionState(gradient_state, weights)
 
     dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000] * 10
@@ -63,7 +146,7 @@ def cli() -> None:
 @jit
 def train_one_episode(observation: Array,
                       state: SolutionState,
-                      gradient_transformation: GradientTransformation[Any, Weights],
+                      gradient_transformation: Adam,
                       ) -> SolutionState:
     observations = jnp.reshape(observation, (1, 1))
     weights_bar, observation = _v_infer_gradient_and_value(observations, state.weights)
