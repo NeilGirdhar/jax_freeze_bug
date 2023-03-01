@@ -57,12 +57,11 @@ def bias_correction(moment, decay, count):
   return tree_map(lambda t: t / bias_correction_.astype(t.dtype), moment)
 
 
-def cast_tree(tree, dtype):
-  """Cast tree to given dtype, skip if None."""
-  if dtype is not None:
-    return tree_map(lambda t: t.astype(dtype), tree)
-  else:
-    return tree
+b1 = 0.9
+b2 = 0.999
+eps = 1e-8
+eps_root = 0.0
+learning_rate = 1e-2
 
 
 @dataclass
