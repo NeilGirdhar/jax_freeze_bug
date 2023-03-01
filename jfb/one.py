@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from functools import partial
 
-import chex
 import jax.numpy as jnp
 import numpy as np
 from jax import Array, custom_vjp, grad, jit, vjp, vmap
@@ -15,7 +14,7 @@ from tjax import RealArray, RealNumeric, print_generic
 from tjax.dataclasses import dataclass
 
 
-def abs_sq(x: chex.Array) -> chex.Array:
+def abs_sq(x: RealArray) -> RealArray:
   if not isinstance(x, (np.ndarray, jnp.ndarray)):
     raise ValueError(f"`abs_sq` accepts only NDarrays, got: {x}.")
   return (x.conj() * x).real
@@ -37,7 +36,6 @@ class AdamState:
 
 
 def safe_int32_increment(count: RealArray) -> RealArray:
-  chex.assert_type(count, jnp.int32)
   max_int32_value = jnp.iinfo(jnp.int32).max
   one = jnp.array(1, dtype=jnp.int32)
   return jnp.where(count < max_int32_value, count + one, max_int32_value)
@@ -45,8 +43,7 @@ def safe_int32_increment(count: RealArray) -> RealArray:
 
 def update_moment(updates, moments, decay, order):
   """Compute the exponential moving average of the `order-th` moment."""
-  return tree_map(
-      lambda g, t: (1 - decay) * (g ** order) + decay * t, updates, moments)
+  return tree_map(lambda g, t: (1 - decay) * (g ** order) + decay * t, updates, moments)
 
 
 def update_moment_per_elem_norm(updates, moments, decay, order):
