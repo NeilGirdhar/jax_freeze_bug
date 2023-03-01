@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import partial
+from typing import NamedTuple
 
 import jax.numpy as jnp
 import numpy as np
@@ -10,8 +11,7 @@ from jax.lax import dot
 from jax.nn import softplus
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
-from tjax import RealArray, print_generic
-from typing import NamedTuple
+from tjax import print_generic
 
 
 class Weights(NamedTuple):
@@ -22,7 +22,7 @@ class Weights(NamedTuple):
 
 
 class AdamState(NamedTuple):
-    count: RealArray
+    count: Array
     mu: Weights
     nu: Weights
 
@@ -62,8 +62,8 @@ learning_rate = 1e-2
 
 
 class Adam(NamedTuple):
-    b1: RealArray = jnp.asarray(0.9)
-    b2: RealArray = jnp.asarray(0.999)
+    b1: Array = jnp.asarray(0.9)
+    b2: Array = jnp.asarray(0.999)
 
     def init(self, parameters: Weights) -> AdamState:
         return AdamState(mu=tree_map(lambda t: jnp.zeros_like(t), parameters),
@@ -112,8 +112,7 @@ def cli() -> None:
     dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000] * 10
     for i, observation in enumerate(dataset):
         observation = jnp.asarray(observation)
-        print_generic(iteration=i, weights=state.weights, observation=observation,
-                      gs=state.gradient_state)
+        print(f"Iteration {i}")
         state = train_one_episode(observation, state, gradient_transformation)
     print_generic(state)
 
