@@ -10,7 +10,7 @@ from jax.lax import dot
 from jax.nn import softplus
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
-from tjax import RealArray, RealNumeric, print_generic
+from tjax import RealArray, print_generic
 from tjax.dataclasses import dataclass
 
 
@@ -65,8 +65,8 @@ learning_rate = 1e-2
 
 @dataclass
 class Adam:
-    b1: RealNumeric = 0.9
-    b2: RealNumeric = 0.999
+    b1: RealArray = jnp.asarray(0.9)
+    b2: RealArray = jnp.asarray(0.999)
 
     def init(self, parameters: Weights) -> AdamState:
         return AdamState(mu=tree_map(lambda t: jnp.zeros_like(t), parameters),
