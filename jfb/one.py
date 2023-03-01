@@ -5,13 +5,11 @@ from functools import partial
 from typing import NamedTuple
 
 import jax.numpy as jnp
-import numpy as np
 from jax import Array, custom_vjp, grad, jit, vjp, vmap
 from jax.lax import dot
 from jax.nn import softplus
 from jax.tree_util import tree_map
 from jaxopt import GradientDescent
-from tjax import print_generic
 
 
 class Weights(NamedTuple):
@@ -28,13 +26,10 @@ class AdamState(NamedTuple):
 
 
 def update_moment(updates, moments, decay, order):
-  """Compute the exponential moving average of the `order-th` moment."""
   return tree_map(lambda g, t: (1 - decay) * (g ** order) + decay * t, updates, moments)
 
 
 def update_moment_per_elem_norm(updates, moments, decay, order):
-  """Compute the EMA of the `order`-th moment of the element-wise norm."""
-
   def orderth_norm(g):
     if jnp.isrealobj(g):
       return g ** order
@@ -92,10 +87,10 @@ class SolutionState(NamedTuple):
 
 def cli() -> None:
     gradient_transformation = Adam()
-    weights = Weights(b1=jnp.array([0., 0., 0.], dtype=np.float32),
-                      w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
-                      b2=jnp.array([0.], dtype=np.float32),
-                      w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=np.float32))
+    weights = Weights(b1=jnp.array([0., 0., 0.], dtype=jnp.float32),
+                      w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=jnp.float32),
+                      b2=jnp.array([0.], dtype=jnp.float32),
+                      w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=jnp.float32))
     gradient_state = AdamState(
         count=jnp.asarray(5),
         mu=Weights(b1=jnp.asarray([-15.569108, -8.185916, -18.872583]),
@@ -114,7 +109,7 @@ def cli() -> None:
         observation = jnp.asarray(observation)
         print(f"Iteration {i}")
         state = train_one_episode(observation, state, gradient_transformation)
-    print_generic(state)
+    print(state)
 
 
 @jit
@@ -184,3 +179,7 @@ def internal_infer_co_bwd(weight_vjp: _Weight_VJP, _: Array) -> tuple[None, Arra
 
 
 internal_infer_co.defvjp(internal_infer_co_fwd, internal_infer_co_bwd)
+
+
+if __name__ == "__main__":
+    cli()
