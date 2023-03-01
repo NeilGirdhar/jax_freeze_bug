@@ -50,7 +50,6 @@ def update_moment_per_elem_norm(updates, moments, decay, order):
   return tree_map(lambda g, t: (1 - decay) * orderth_norm(g) + decay * t, updates, moments)
 
 
-@partial(jit, inline=True)
 def bias_correction(moment, decay, count):
   bias_correction_ = 1 - decay**count
 
