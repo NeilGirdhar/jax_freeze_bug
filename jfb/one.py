@@ -69,7 +69,6 @@ class Adam:
     b1: RealNumeric = 0.9
     b2: RealNumeric = 0.999
     eps: RealNumeric = 1e-8
-    eps_root: RealNumeric = 0.0
 
     def init(self, parameters: Weights) -> AdamState:
         return AdamState(mu=tree_map(lambda t: jnp.zeros_like(t), parameters),
@@ -86,7 +85,7 @@ class Adam:
         mu_hat = bias_correction(mu, self.b1, count_inc)
         nu_hat = bias_correction(nu, self.b2, count_inc)
         gradient = tree_map(
-            lambda m, v: m / (jnp.sqrt(v + self.eps_root) + self.eps), mu_hat, nu_hat)
+            lambda m, v: m / (jnp.sqrt(v) + self.eps), mu_hat, nu_hat)
         gradient = tree_map(lambda m: m * -learning_rate, gradient)
         return gradient, AdamState(count=count_inc, mu=mu, nu=nu)
 
