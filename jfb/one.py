@@ -14,12 +14,6 @@ from tjax import RealArray, RealNumeric, print_generic
 from tjax.dataclasses import dataclass
 
 
-def abs_sq(x: RealArray) -> RealArray:
-  if not isinstance(x, (np.ndarray, jnp.ndarray)):
-    raise ValueError(f"`abs_sq` accepts only NDarrays, got: {x}.")
-  return (x.conj() * x).real
-
-
 @dataclass
 class Weights:
     b1: Array
@@ -33,12 +27,6 @@ class AdamState:
     count: RealArray
     mu: Weights
     nu: Weights
-
-
-def safe_int32_increment(count: RealArray) -> RealArray:
-  max_int32_value = jnp.iinfo(jnp.int32).max
-  one = jnp.array(1, dtype=jnp.int32)
-  return jnp.where(count < max_int32_value, count + one, max_int32_value)
 
 
 def update_moment(updates, moments, decay, order):
@@ -57,7 +45,7 @@ def update_moment_per_elem_norm(updates, moments, decay, order):
       # JAX generates different HLO for int and float `order`
       if half_order.is_integer():
         half_order = int(half_order)
-      return abs_sq(g) ** half_order
+      return jnp.square(g) ** half_order
 
   return tree_map(lambda g, t: (1 - decay) * orderth_norm(g) + decay * t, updates, moments)
 
@@ -97,7 +85,7 @@ class Adam:
                parameters: Weights | None) -> tuple[Weights, AdamState]:
         mu = update_moment(gradient, state.mu, self.b1, 1)
         nu = update_moment_per_elem_norm(gradient, state.nu, self.b2, 2)
-        count_inc = safe_int32_increment(state.count)
+        count_inc = state.count + jnp.array(1, dtype=jnp.int32)
         mu_hat = bias_correction(mu, self.b1, count_inc)
         nu_hat = bias_correction(nu, self.b2, count_inc)
         gradient = tree_map(
