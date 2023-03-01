@@ -66,7 +66,6 @@ learning_rate = 1e-2
 
 @dataclass
 class Adam:
-    learning_rate: RealArray
     b1: RealNumeric = 0.9
     b2: RealNumeric = 0.999
     eps: RealNumeric = 1e-8
@@ -88,7 +87,7 @@ class Adam:
         nu_hat = bias_correction(nu, self.b2, count_inc)
         gradient = tree_map(
             lambda m, v: m / (jnp.sqrt(v + self.eps_root) + self.eps), mu_hat, nu_hat)
-        gradient = tree_map(lambda m: m * -self.learning_rate, gradient)
+        gradient = tree_map(lambda m: m * -learning_rate, gradient)
         return gradient, AdamState(count=count_inc, mu=mu, nu=nu)
 
 
@@ -99,7 +98,7 @@ class SolutionState:
 
 
 def cli() -> None:
-    gradient_transformation = Adam(jnp.asarray(1e-2))
+    gradient_transformation = Adam()
     weights = Weights(b1=jnp.array([0., 0., 0.], dtype=np.float32),
                       w1=jnp.array([[-0.667605, 0.3261746, -0.0785462]], dtype=np.float32),
                       b2=jnp.array([0.], dtype=np.float32),
