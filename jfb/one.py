@@ -20,34 +20,34 @@ class Weights(NamedTuple):
 
 
 class AdamState(NamedTuple):
-    count: Array
+    the_count: Array
     mu: Weights
     nu: Weights
 
 
-def update_moment(updates, moments, decay, order):
-  return tree_map(lambda g, t: (1 - decay) * (g ** order) + decay * t, updates, moments)
+def update_moment(updates: Weights, moments: Weights, decay: float | Array, order: int) -> Weights:
+    return tree_map(lambda g, t: (1 - decay) * (g ** order) + decay * t, updates, moments)
 
 
-def update_moment_per_elem_norm(updates, moments, decay, order):
-  def orderth_norm(g):
-    if jnp.isrealobj(g):
-      return g ** order
-    else:
-      half_order = order / 2
-      # JAX generates different HLO for int and float `order`
-      if half_order.is_integer():
-        half_order = int(half_order)
-      return jnp.square(g) ** half_order
+def update_moment_per_elem_norm(updates: Weights, moments: Weights, decay: float | Array, order: int
+                                ) -> Weights:
+    def orderth_norm(g: Array) -> Array:
+        if jnp.isrealobj(g):
+            return g ** order
+        else:
+            half_order = order / 2
+            # JAX generates different HLO for int and float `order`
+            if half_order.is_integer():
+                half_order = int(half_order)
+            return jnp.square(g) ** half_order
 
-  return tree_map(lambda g, t: (1 - decay) * orderth_norm(g) + decay * t, updates, moments)
+    return tree_map(lambda g, t: (1 - decay) * orderth_norm(g) + decay * t, updates, moments)
 
 
-def bias_correction(moment, decay, count):
-  bias_correction_ = 1 - decay**count
-
-  # Perform division in the original precision.
-  return tree_map(lambda t: t / bias_correction_.astype(t.dtype), moment)
+def bias_correction(moment: Weights, decay: float | Array, the_count: Array) -> Weights:
+    bias_correction_ = 1 - decay**the_count
+    # Perform division in the original precision.
+    return tree_map(lambda t: t / bias_correction_.astype(t.dtype), moment)
 
 
 b1 = 0.9
@@ -63,7 +63,7 @@ class Adam(NamedTuple):
     def init(self, parameters: Weights) -> AdamState:
         return AdamState(mu=tree_map(lambda t: jnp.zeros_like(t), parameters),
                          nu=tree_map(lambda t: jnp.zeros_like(t), parameters),
-                         count=jnp.zeros([], jnp.int32))
+                         the_count=jnp.zeros([], jnp.int32))
 
     def update(self,
                gradient: Weights,
@@ -71,13 +71,13 @@ class Adam(NamedTuple):
                parameters: Weights | None) -> tuple[Weights, AdamState]:
         mu = update_moment(gradient, state.mu, self.b1, 1)
         nu = update_moment_per_elem_norm(gradient, state.nu, self.b2, 2)
-        count_inc = state.count + jnp.array(1, dtype=jnp.int32)
+        count_inc = state.the_count + jnp.array(1, dtype=jnp.int32)
         mu_hat = bias_correction(mu, self.b1, count_inc)
         nu_hat = bias_correction(nu, self.b2, count_inc)
         gradient = tree_map(
             lambda m, v: m / (jnp.sqrt(v) + eps), mu_hat, nu_hat)
         gradient = tree_map(lambda m: m * -learning_rate, gradient)
-        return gradient, AdamState(count=count_inc, mu=mu, nu=nu)
+        return gradient, AdamState(the_count=count_inc, mu=mu, nu=nu)
 
 
 class SolutionState(NamedTuple):
@@ -92,7 +92,7 @@ def cli() -> None:
                       b2=jnp.array([0.], dtype=jnp.float32),
                       w2=jnp.array([[0.464014], [-0.435685], [0.776788]], dtype=jnp.float32))
     gradient_state = AdamState(
-        count=jnp.asarray(5),
+        the_count=jnp.asarray(5),
         mu=Weights(b1=jnp.asarray([-15.569108, -8.185916, -18.872583]),
                    w1=jnp.asarray([[-6488.655, -5813.5786, -11111.309]]),
                    b2=jnp.asarray([-16.122942]),
@@ -106,9 +106,8 @@ def cli() -> None:
 
     dataset = [2681.0000, 6406.0000, 2098.0000, 5384.0000, 5765.0000, 2273.0000] * 10
     for i, observation in enumerate(dataset):
-        observation = jnp.asarray(observation)
         print(f"Iteration {i}")
-        state = train_one_episode(observation, state, gradient_transformation)
+        state = train_one_episode(jnp.asarray(observation), state, gradient_transformation)
     print(state)
 
 
@@ -132,7 +131,7 @@ def _infer(observation: Array, weights: Weights) -> tuple[Array, Array]:
 
 def _infer_gradient_and_value(observation: Array, weights: Weights) -> tuple[Weights, Array]:
     bound_infer = partial(_infer, observation)
-    f: Callable[[Array], tuple[Array, Array]] = grad(bound_infer, has_aux=True)
+    f: Callable[[Weights], tuple[Weights, Array]] = grad(bound_infer, has_aux=True)
     return f(weights)
 
 

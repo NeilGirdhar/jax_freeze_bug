@@ -23,15 +23,10 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = '>=3.10, <3.11'
-dm-haiku = {git = "https://github.com/deepmind/dm-haiku.git"}
-efax = '>=1.9'
 jax = '>=0.4.2'
 jaxopt = '>=0.5.5'
 more-itertools = '>=8.14'
 numpy = '>=1.22'
-tensorflow = '>=2.11.0'
-tensorflow_datasets = '>=4.5.2'
-tjax = '>=0.25.3'
 
 [tool.poetry.group.dev.dependencies]
 isort = '>=5.8'
@@ -62,10 +57,6 @@ disable = 'ignored-abstractmethod'
 
 [tool.pylint.master]
 jobs = 0
-load-plugins=['pylint_pytest']
-extension-pkg-whitelist = [
-    'PySide6',
-    'matplotlib.backends']
 
 [tool.pylint.messages_control]
 disable = [
@@ -98,12 +89,13 @@ min-similarity-lines = 20
 ignore-imports = 'yes'
 
 [tool.pyright]
+include = ["jfb"]
 stubPath = ""
 reportPrivateImportUsage = false
 # reportUnnecessaryTypeIgnoreComment = true
 
 [tool.mypy]
-plugins = 'tjax.mypy_plugin'
+files = ["jfb"]
 check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
@@ -121,16 +113,8 @@ warn_unreachable = true
 warn_unused_configs = true
 warn_unused_ignores = true
 
-# https://github.com/matplotlib/matplotlib/issues/20504
-# https://github.com/networkx/networkx/pull/5127
 [[tool.mypy.overrides]]
-module = ['jaxopt', 'matplotlib', 'matplotlib.axes', 'matplotlib.colors', 'matplotlib.legend',
-       'matplotlib.pyplot', 'matplotlib.figure', 'matplotlib.backends.backend_qt5agg', 'pyqtgraph',
-       'pyqtgraph.parametertree', 'pyqtgraph.parametertree.parameterTypes', 'networkx', 'pandas',
-       'progressbar', 'pylint', 'seaborn', 'tensorflow_datasets.core',
-       'tensorflow_datasets.core.features', 'tensorflow_datasets.core.features.tensor_feature',
-       'tensorflow.python.data.ops.dataset_ops', 'tensorflow.python.framework.dtypes',
-       'tensorflow.python.data.ops.iterator_ops', 'tensorflow_datasets']
+module = ['jaxopt', 'pylint']
 ignore_missing_imports = true
 
 [tool.ruff]
